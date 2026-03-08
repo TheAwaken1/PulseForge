@@ -1,8 +1,11 @@
 const path = require('path')
 module.exports = {
   version: "5.0",
+  title: "PulseForge",
+  description: "A fully local, cross-platform audio visualizer editor. Create reactive music videos with layered graphics, AI-transcribed lyrics, and frame-perfect MP4 exports — all running in your browser",
+  icon: "icon.png",
   menu: async (kernel, info) => {
-    let installed = info.exists("env")
+    let installed = info.exists("app/env")
     let running = {
       install: info.running("install.js"),
       start: info.running("start.js"),
@@ -65,34 +68,28 @@ module.exports = {
           default: true,
           icon: "fa-solid fa-power-off",
           text: "Start",
-          href: "start.js",
+          href: "start.js"
         }, {
           icon: "fa-solid fa-plug",
           text: "Update",
-          href: "update.js",
+          href: "update.js"
         }, {
           icon: "fa-solid fa-plug",
-          text: "Install",
-          href: "install.js",
-        }, {
-          icon: "fa-solid fa-file-zipper",
-          text: "<div><strong>Save Disk Space</strong><div>Deduplicates redundant library files</div></div>",
-          href: "link.js",
+          text: "Reinstall",
+          href: "install.js"
         }, {
           icon: "fa-regular fa-circle-xmark",
-          text: "<div><strong>Reset</strong><div>Revert to pre-install state</div></div>",
-          href: "reset.js",
-          confirm: "Are you sure you wish to reset the app?"
-
-        }]
+          text: "Reset",
+          href: "reset.js"
+        }];
       }
     } else {
       return [{
         default: true,
         icon: "fa-solid fa-plug",
         text: "Install",
-        href: "install.js",
-      }]
+        href: "install.js"
+      }];
     }
   }
-}
+};

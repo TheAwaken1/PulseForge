@@ -2,7 +2,7 @@ module.exports = {
   run: [{
     method: "fs.rm",
     params: {
-      path: "env"
+      path: "app/node_modules"
     }
   }]
 }

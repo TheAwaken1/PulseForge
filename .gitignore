@@ -1,2 +1,45 @@
 node_modules
 .DS_Store
+dist
+app/node_modules
+app/dist
+app/src-tauri/target
+env
+logs
+cache
+output/*.mp4
+output/*.webm
+output/*.avi
+output/*.mov
+*.db
+*.sqlite
+.env
+.env.*
+
+# Claude AI coding assistant files
+.claude/
+
+# Genkit AI dev files
+.genkit/
+
+# Saved project files (user-specific)
+*.json
+!pinokio.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!app/package.json
+!app/package-lock.json
+!app/tsconfig*.json
+!app/src-tauri/**/*.json
+
+# Saved LRC lyric files (user-specific)
+*.lrc
+
+# Internal planning / dev notes
+PRD.md
+SPec.md
+ARCHITECTURE.md
+Video_Issues.txt
+Recommended Improvement Plan.txt
+Layer Changes.txt

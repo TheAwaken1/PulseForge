@@ -1,0 +1,381 @@
+import React, { useRef, useState, useCallback } from 'react';
+import { useProjectStore } from '../state/projectStore';
+import {
+  staticParam, defaultTransform, createLayerId,
+  type LyricsLayerConfig,
+} from '../types/project';
+import {
+  prepareAudioForWhisper,
+  transcribeViaOpenAI,
+  chunksToLrc,
+  WHISPER_MODELS,
+  type TranscribeChunk,
+} from '../utils/transcribe';
+
+type TranscribeMode = 'local' | 'openai';
+
+export const LyricsPanel: React.FC = () => {
+  const { project, addLayer, updateLayer } = useProjectStore();
+  const [collapsed, setCollapsed] = useState(false);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+
+  const [mode, setMode] = useState<TranscribeMode>(
+    () => (localStorage.getItem('pulseforge.transcribe.mode') as TranscribeMode) ?? 'local',
+  );
+  const [modelId, setModelId] = useState(
+    () => localStorage.getItem('pulseforge.whisper.model') ?? WHISPER_MODELS[0].id,
+  );
+  const [useGPU, setUseGPU] = useState(
+    () => localStorage.getItem('pulseforge.whisper.gpu') !== 'false',
+  );
+  const [openaiKey, setOpenaiKey] = useState(
+    () => localStorage.getItem('pulseforge.openai.key') ?? '',
+  );
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
+  const selectedModel = WHISPER_MODELS.find((m) => m.id === modelId) ?? WHISPER_MODELS[0];
+  const audioAsset = project.assets.find((a) => a.id === project.audio.assetId);
+
+  // Find first lyrics layer or null
+  const lyricsLayer = project.layers.find((l) => l.kind === 'lyrics') as LyricsLayerConfig | undefined;
+  const lineCount = lyricsLayer?.lrcContent
+    ? lyricsLayer.lrcContent.split('\n').filter((l) => /\[\d/.test(l)).length
+    : 0;
+
+  // ── Ensure a lyrics layer exists, create one if not ────────────────
+  const ensureLyricsLayer = useCallback((): string => {
+    if (lyricsLayer) return lyricsLayer.id;
+    const newLayer: LyricsLayerConfig = {
+      id: createLayerId(), name: 'Lyrics', kind: 'lyrics', enabled: true,
+      opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(), effects: [],
+      lrcContent: '',
+      fontFamily: 'Arial', fontSize: staticParam(40), fontWeight: 'bold',
+      color: staticParam('#ffffff'), textAlign: 'center',
+      positionX: staticParam(0.5), positionY: staticParam(0.82),
+      showNextLine: true, nextLineOpacity: 0.15,
+      glowEnabled: staticParam(true), glowStrength: staticParam(1.2), glowColor: staticParam('#6c5ce7'),
+      audioPulseAmount: staticParam(0.15),
+      strokeEnabled: staticParam(true), strokeColor: staticParam('#000000'), strokeWidth: staticParam(3),
+    };
+    addLayer(newLayer);
+    return newLayer.id;
+  }, [lyricsLayer, addLayer]);
+
+  const setLrc = useCallback((lrc: string) => {
+    const id = ensureLyricsLayer();
+    updateLayer(id, { lrcContent: lrc } as any);
+  }, [ensureLyricsLayer, updateLayer]);
+
+  // ── LRC file upload ────────────────────────────────────────────────
+  const handleLrcFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result;
+      if (typeof text === 'string') setLrc(text);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // ── Local Whisper ──────────────────────────────────────────────────
+  const handleTranscribeLocal = useCallback(async () => {
+    if (!audioAsset) { setError('No audio loaded.'); return; }
+    setError(''); setBusy(true);
+    setStatus('Preparing audio…');
+
+    let audio: Float32Array;
+    try {
+      audio = await prepareAudioForWhisper(audioAsset.relPath);
+    } catch (e: any) {
+      setError('Audio prep failed: ' + e.message); setBusy(false); setStatus(''); return;
+    }
+
+    if (!workerRef.current) {
+      workerRef.current = new Worker(
+        new URL('../workers/whisper.worker.ts', import.meta.url),
+        { type: 'module' },
+      );
+    }
+
+    const worker = workerRef.current;
+    worker.onmessage = (ev: MessageEvent) => {
+      const msg = ev.data;
+      if (msg.type === 'status') {
+        setStatus(msg.message);
+      } else if (msg.type === 'result') {
+        const lrc = chunksToLrc(msg.chunks as TranscribeChunk[]);
+        setLrc(lrc);
+        setStatus(`Done — ${(msg.chunks as TranscribeChunk[]).length} lines`);
+        setBusy(false);
+      } else if (msg.type === 'error') {
+        setError(msg.message); setStatus(''); setBusy(false);
+      }
+    };
+    worker.onerror = (ev) => {
+      setError(ev.message); setStatus(''); setBusy(false);
+    };
+
+    worker.postMessage(
+      { type: 'transcribe', audio, modelId: selectedModel.id, useGPU: useGPU && selectedModel.preferGPU, gpuDtype: selectedModel.gpuDtype, cpuDtype: selectedModel.cpuDtype },
+      [audio.buffer],
+    );
+  }, [audioAsset, selectedModel, useGPU, setLrc]);
+
+  // ── OpenAI Whisper ─────────────────────────────────────────────────
+  const handleTranscribeOpenAI = useCallback(async () => {
+    if (!audioAsset) { setError('No audio loaded.'); return; }
+    if (!openaiKey.trim()) { setError('Enter your OpenAI API key.'); return; }
+    setError(''); setBusy(true);
+    try {
+      const lrc = await transcribeViaOpenAI(audioAsset.relPath, openaiKey.trim(), setStatus);
+      setLrc(lrc);
+      setStatus('Done!');
+    } catch (e: any) {
+      setError(e.message); setStatus('');
+    } finally {
+      setBusy(false);
+    }
+  }, [audioAsset, openaiKey, setLrc]);
+
+  const handleTranscribe = mode === 'local' ? handleTranscribeLocal : handleTranscribeOpenAI;
+
+  const setMode2 = (m: TranscribeMode) => { setMode(m); localStorage.setItem('pulseforge.transcribe.mode', m); setError(''); setStatus(''); };
+  const setModel2 = (id: string) => { setModelId(id); localStorage.setItem('pulseforge.whisper.model', id); setError(''); setStatus(''); };
+  const setGPU2 = (v: boolean) => { setUseGPU(v); localStorage.setItem('pulseforge.whisper.gpu', String(v)); };
+  const setKey2 = (k: string) => { setOpenaiKey(k); localStorage.setItem('pulseforge.openai.key', k); };
+
+  return (
+    <div style={styles.panel}>
+      {/* Header */}
+      <div style={styles.header} onClick={() => setCollapsed((c) => !c)}>
+        <span style={styles.headerIcon}>♪</span>
+        <span style={styles.headerTitle}>Lyrics</span>
+        {lyricsLayer && lineCount > 0 && (
+          <span style={styles.linesBadge}>{lineCount} lines</span>
+        )}
+        <span style={{ ...styles.chevron, transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+      </div>
+
+      {!collapsed && (
+        <div style={styles.body}>
+          {/* ── Left: LRC file ── */}
+          <div style={styles.col}>
+            <div style={styles.colLabel}>LRC File</div>
+            <div style={styles.row}>
+              <button style={styles.btn} onClick={() => fileRef.current?.click()}>
+                Upload .lrc
+              </button>
+              {lyricsLayer?.lrcContent && (
+                <button className="ghost danger" style={styles.btn} onClick={() => setLrc('')}>
+                  Clear
+                </button>
+              )}
+              <input ref={fileRef} type="file" accept=".lrc,text/plain" style={{ display: 'none' }} onChange={handleLrcFile} />
+            </div>
+            {lineCount > 0 && (
+              <div style={styles.hint}>✓ {lineCount} lyric lines loaded</div>
+            )}
+            {!lyricsLayer?.lrcContent && (
+              <div style={{ ...styles.hint, color: 'var(--text-dim)' }}>
+                Upload an .lrc file or use AI transcription →
+              </div>
+            )}
+            {!lyricsLayer && (
+              <div style={{ ...styles.hint, color: 'var(--text-dim)', marginTop: 6 }}>
+                A Lyrics layer will be created automatically.
+              </div>
+            )}
+          </div>
+
+          <div style={styles.divider} />
+
+          {/* ── Right: Transcription ── */}
+          <div style={styles.col}>
+            <div style={styles.colLabel}>AI Transcription</div>
+
+            {/* Engine tabs */}
+            <div style={styles.row}>
+              {(['local', 'openai'] as TranscribeMode[]).map((m) => (
+                <button
+                  key={m}
+                  className={mode === m ? 'primary' : 'ghost'}
+                  style={{ ...styles.btn, flex: 1 }}
+                  onClick={() => setMode2(m)}
+                  disabled={busy}
+                >
+                  {m === 'local' ? 'Local (Whisper)' : 'OpenAI API'}
+                </button>
+              ))}
+            </div>
+
+            {mode === 'local' && (
+              <>
+                <select
+                  value={modelId}
+                  onChange={(e) => setModel2(e.target.value)}
+                  disabled={busy}
+                  style={styles.select}
+                >
+                  {WHISPER_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} ({m.size}){m.preferGPU ? ' · GPU' : ' · CPU'}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedModel.preferGPU && (
+                  <label style={styles.checkRow}>
+                    <input
+                      type="checkbox"
+                      checked={useGPU}
+                      onChange={(e) => setGPU2(e.target.checked)}
+                      disabled={busy}
+                      style={{ accentColor: 'var(--accent)' }}
+                    />
+                    <span>
+                      Use GPU &nbsp;
+                      <span style={{ color: hasWebGPU ? 'var(--accent-bright)' : 'var(--text-dim)' }}>
+                        {hasWebGPU ? '(WebGPU ✓)' : '(not detected)'}
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </>
+            )}
+
+            {mode === 'openai' && (
+              <input
+                type="password"
+                placeholder="sk-…  OpenAI API key"
+                value={openaiKey}
+                onChange={(e) => setKey2(e.target.value)}
+                style={styles.keyInput}
+              />
+            )}
+
+            {!audioAsset && (
+              <div style={{ ...styles.hint, color: 'var(--warning)' }}>Import audio first.</div>
+            )}
+
+            <button
+              className="primary"
+              style={{ ...styles.btn, width: '100%', marginTop: 4 }}
+              onClick={handleTranscribe}
+              disabled={busy || !audioAsset}
+            >
+              {busy ? 'Transcribing…' : 'Transcribe Audio'}
+            </button>
+
+            {status && !error && (
+              <div style={{ ...styles.hint, fontFamily: 'var(--font-mono)', wordBreak: 'break-word' }}>
+                {status}
+              </div>
+            )}
+            {error && (
+              <div style={{ ...styles.hint, color: 'var(--error, #ff7675)', wordBreak: 'break-word' }}>
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  panel: {
+    flexShrink: 0,
+    background: 'var(--bg-secondary)',
+    borderTop: '1px solid var(--border)',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '7px 14px',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  headerIcon: { fontSize: 14, color: 'var(--accent-bright)' },
+  headerTitle: { fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', flex: 1 },
+  linesBadge: {
+    fontSize: 11,
+    background: 'var(--accent-dim)',
+    color: 'var(--accent-bright)',
+    borderRadius: 10,
+    padding: '1px 7px',
+    fontFamily: 'var(--font-mono)',
+  },
+  chevron: {
+    fontSize: 12,
+    color: 'var(--text-muted)',
+    transition: 'transform 0.2s',
+    display: 'inline-block',
+  },
+  body: {
+    display: 'flex',
+    gap: 0,
+    padding: '0 0 10px',
+    borderTop: '1px solid var(--border-light)',
+  },
+  col: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    padding: '10px 14px',
+  },
+  divider: {
+    width: 1,
+    background: 'var(--border-light)',
+    margin: '8px 0',
+    flexShrink: 0,
+  },
+  colLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'var(--text-muted)',
+    marginBottom: 2,
+  },
+  row: { display: 'flex', gap: 6, alignItems: 'center' },
+  btn: { fontSize: 11, padding: '4px 10px' },
+  hint: { fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 },
+  select: {
+    fontSize: 12,
+    padding: '5px 8px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'var(--bg-hover)',
+    color: 'var(--text-primary)',
+    width: '100%',
+  },
+  checkRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+  },
+  keyInput: {
+    fontSize: 12,
+    padding: '5px 8px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'var(--bg-hover)',
+    color: 'var(--text-primary)',
+    fontFamily: 'var(--font-mono)',
+    width: '100%',
+    boxSizing: 'border-box',
+  },
+};
