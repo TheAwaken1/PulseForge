@@ -314,8 +314,12 @@ export class ExportOrchestrator {
       if (e.data.size > 0) chunks.push(e.data);
     };
 
-    // Start recording
-    recorder.start();
+    // Start recording with a timeslice so encoded data is handed over in
+    // small blobs as it is produced. Without a timeslice the recorder keeps
+    // the entire video in a single in-page buffer until stop(), which grows
+    // past several GB at 1440p/4K on long tracks and crashes the renderer
+    // (white screen). Chunked blobs can be paged out by the browser instead.
+    recorder.start(RECORDER_TIMESLICE_MS);
 
     // Start audio playback
     if (audioSource && audioCtx) {
@@ -572,15 +576,26 @@ function pickMimeType(): string {
   throw new Error('No supported video codec found. Try running via the desktop (Tauri) export path.');
 }
 
+/** Recorder timeslice: how often MediaRecorder hands over an encoded chunk. */
+const RECORDER_TIMESLICE_MS = 1000;
+
+/**
+ * Measured on Chromium's H.264 MediaRecorder: the encoder lands at roughly
+ * 1.9x the requested bitrate for 720p/1080p, and the hardware encoder clamps
+ * around 150 Mbps at 4K. Used for the file-size estimate.
+ */
+const ENCODER_OVERSHOOT = 1.9;
+const ENCODER_ACTUAL_CAP = 160_000_000;
+
 function computeVideoBitrate(width: number, height: number, fps: number): number {
-  // Bits-per-pixel heuristic tuned for music visuals.
-  // 4K particle-heavy scenes need more bitrate to avoid soft/blocky dots.
+  // Bits-per-pixel heuristic tuned for music visuals. A single curve for all
+  // resolutions: the previous "high-res" branch made 1440p request more data
+  // per second than 4K actually produced, which pushed the recording buffer
+  // past renderer memory limits on long tracks.
   const pixelsPerSecond = Math.max(1, width * height * fps);
-  const isHighRes = width >= 2560 || height >= 1440;
-  const bpp = isHighRes ? 0.55 : 0.35;
+  const bpp = 0.32;
   const estimated = Math.round(pixelsPerSecond * bpp);
-  const maxCap = isHighRes ? 220_000_000 : 140_000_000;
-  return Math.max(12_000_000, Math.min(maxCap, estimated));
+  return Math.max(12_000_000, Math.min(150_000_000, estimated));
 }
 
 export function estimateExportFileSizeBytes(
@@ -590,7 +605,9 @@ export function estimateExportFileSizeBytes(
   durationSec: number,
 ): number {
   const duration = Math.max(0, durationSec);
-  const videoBits = computeVideoBitrate(width, height, fps) * duration;
+  const requested = computeVideoBitrate(width, height, fps);
+  const actual = Math.min(ENCODER_ACTUAL_CAP, requested * ENCODER_OVERSHOOT);
+  const videoBits = actual * duration;
   const audioBits = 192_000 * duration;
   return Math.round(((videoBits + audioBits) / 8) * 1.03);
 }
