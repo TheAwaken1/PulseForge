@@ -5,7 +5,7 @@
 
 import type { ShaderType } from '../../types/project';
 
-export { DEFAULT_VERTEX } from './common';
+export { DEFAULT_VERTEX, FILTER_VERTEX } from './common';
 
 import { TUNNEL_FRAG } from './tunnel';
 import { PLASMA_FRAG } from './plasma';

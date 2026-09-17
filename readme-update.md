@@ -68,11 +68,10 @@ The preset collection was expanded and upgraded with more layered, music-reactiv
 - Retro 1980s
 - HD Rainbow Bars
 - HD Sonic Spikes
-- Aurora Borealis
+- Aurora Borealis (rebuilt: spectrum-driven curtains over a reflecting frozen lake)
 - Liquid Dreams
 - Fluid Nebula
 - Dot Sphere Equalizer
-- Kinetic Poster
 
 Dot Sphere Equalizer is now available as a preset without automatically adding the unrelated Deep Space composition.
 

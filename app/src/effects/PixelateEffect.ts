@@ -3,7 +3,7 @@ import type { RenderContext, RuntimeEffect } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { PixelateEffectConfig } from '../types/project';
 import { sampleParam } from '../types/project';
-import { DEFAULT_VERTEX } from '../layers/shaders';
+import { FILTER_VERTEX } from '../layers/shaders';
 import { audioTargetEnergy } from '../audio/reactivity';
 
 const PIXELATE_FRAG = `
@@ -56,7 +56,7 @@ export class PixelateEffectRuntime implements RuntimeEffect<PixelateEffectConfig
   init(_target: PIXI.Container, _ctx: RenderContext): void {
     try {
       const glProgram = PIXI.GlProgram.from({
-        vertex: DEFAULT_VERTEX,
+        vertex: FILTER_VERTEX,
         fragment: PIXELATE_FRAG,
         name: `pixelate-effect-${this.instanceId}`,
       });

@@ -32,7 +32,8 @@ void main() {
   disp.x += ripple;
 
   vec2 duv = clamp(uv + disp, 0.001, 0.999);
-  vec3 scene = texture(uTexture, duv).rgb;
+  // uTexture is the power-of-two padded filter input: remap from screen space.
+  vec3 scene = texture(uTexture, duv * vInputScale).rgb;
 
   // Keep blacks black, avoid haze.
   scene = max(scene - vec3(0.005), vec3(0.0));

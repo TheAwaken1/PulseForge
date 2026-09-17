@@ -9,6 +9,50 @@
 
 export const DEFAULT_VERTEX = `
 in vec2 aPosition;
+// vTextureCoord is 0..1 across the filter OUTPUT frame (screen space).
+// PixiJS pools filter textures at power-of-two sizes, so the classic
+// filterTextureCoord() only spans part of the texture (e.g. 0..0.94 x 0..0.53
+// for a 1920x1080 frame in a 2048x2048 texture). All PulseForge shaders treat
+// the coordinate as screen space, so we pass aPosition directly and keep the
+// padded texture coordinate separately for shaders that sample uTexture.
+out vec2 vTextureCoord;
+out vec2 vInputCoord;
+out vec2 vInputScale;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition(void) {
+  vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+  position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+  position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+  return vec4(position, 0.0, 1.0);
+}
+
+vec2 filterTextureCoord(void) {
+  return aPosition * (uOutputFrame.zw * uInputSize.zw);
+}
+
+void main(void) {
+  gl_Position = filterVertexPosition();
+  vTextureCoord = aPosition;
+  vInputCoord = filterTextureCoord();
+  vInputScale = uOutputFrame.zw * uInputSize.zw;
+}
+`;
+
+/* ------------------------------------------------------------------ */
+/*  Vertex shader for post-process EFFECTS (bloom, pixelate, ...)       */
+/*                                                                      */
+/*  Effects sample the filter input texture, so they need the classic   */
+/*  PixiJS texture coordinate that accounts for power-of-two padding.   */
+/*  Do NOT use DEFAULT_VERTEX for effects: it maps vTextureCoord to     */
+/*  screen space and would sample the padded texture incorrectly.       */
+/* ------------------------------------------------------------------ */
+
+export const FILTER_VERTEX = `
+in vec2 aPosition;
 out vec2 vTextureCoord;
 
 uniform vec4 uInputSize;
@@ -37,7 +81,9 @@ void main(void) {
 /* ------------------------------------------------------------------ */
 
 export const COMMON = `
-in vec2 vTextureCoord;
+in vec2 vTextureCoord;   // screen space, 0..1 over the frame
+in vec2 vInputCoord;     // padded input texture space (for uTexture sampling)
+in vec2 vInputScale;     // multiply a screen-space uv by this to sample uTexture
 out vec4 finalColor;
 
 uniform sampler2D uTexture;
