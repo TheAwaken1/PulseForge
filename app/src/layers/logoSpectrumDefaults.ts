@@ -72,7 +72,7 @@ export function createLogoSpectrumLayer(): RadialSpectrumLayerConfig {
     },
     color: {
       mode: 'solid',
-      solid: staticParam('#8b7cff'),
+      solid: staticParam('#ffffff'),
     },
     roundedCaps: true,
     liquidMotion: true,

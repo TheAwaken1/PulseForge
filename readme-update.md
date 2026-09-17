@@ -52,7 +52,7 @@ Default settings:
 | Liquid speed | 1.35 |
 | Noise jitter | 0.03 |
 | Blend mode | Screen |
-| Color | `#8b7cff` |
+| Color | `#ffffff` (white) |
 
 The halo includes rounded bars, liquid motion, matched Shake, and matched Pulse.
 
