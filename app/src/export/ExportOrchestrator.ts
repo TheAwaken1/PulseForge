@@ -8,6 +8,27 @@ export type ExportQualityMode = 'compatibility' | 'crisp';
 export interface ExportOptions {
   fps: number;
   mode: ExportQualityMode;
+  /**
+   * Browser/Pinokio path only: trigger a browser download of the finished
+   * video automatically. The video is also kept in the export store so the
+   * UI can offer a "Download video" button afterwards.
+   */
+  autoDownload?: boolean;
+}
+
+/**
+ * Trigger a browser "Save file" download for a video blob.
+ * Used by both the auto-download option and the "Download video" button.
+ */
+export function downloadVideoBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 /**
@@ -122,7 +143,7 @@ export class ExportOrchestrator {
           options,
         );
       } else {
-        await this.exportViaDownload(project, outputPath, totalFrames, fps, targetWidth, targetHeight, audioUrl);
+        await this.exportViaDownload(project, outputPath, totalFrames, fps, targetWidth, targetHeight, audioUrl, options);
       }
 
       if (!this.cancelled) {
@@ -216,6 +237,14 @@ export class ExportOrchestrator {
       return;
     }
     await invoke('finalize_export');
+
+    exportStore.setResult({
+      fileName: outputPath.split(/[\/]/).pop() || 'export.mp4',
+      blob: null,
+      savedPath: outputPath,
+      width,
+      height,
+    });
   }
 
   /**
@@ -230,6 +259,7 @@ export class ExportOrchestrator {
     width: number,
     height: number,
     audioUrl: string,
+    options: ExportOptions,
   ): Promise<void> {
     const exportStore = useExportStore.getState();
     exportStore.setStatus('rendering');
@@ -391,7 +421,7 @@ export class ExportOrchestrator {
     const baseName = (outputPath.split('/').pop() || fallbackName).replace(/\.\w+$/, `.${ext}`);
 
     // Try saving directly to the output/ folder via the Vite dev server middleware
-    let savedToServer = false;
+    let savedPath: string | null = null;
     try {
       const response = await fetch('/api/save-export', {
         method: 'POST',
@@ -399,22 +429,31 @@ export class ExportOrchestrator {
         body: blob,
       });
       if (response.ok) {
-        savedToServer = true;
-        console.info('[PulseForge] Export saved to output/', baseName);
+        try {
+          const info = await response.json();
+          savedPath = typeof info?.path === 'string' ? info.path : `output/${baseName}`;
+        } catch {
+          savedPath = `output/${baseName}`;
+        }
+        console.info('[PulseForge] Export saved to', savedPath);
       }
     } catch {
-      // Dev server endpoint not available — fall through to browser download
+      // Dev server endpoint not available — the in-app download still works.
     }
 
-    if (!savedToServer) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = baseName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    // Keep the video in memory so the editor can offer a "Download video" button.
+    exportStore.setResult({
+      fileName: baseName,
+      blob,
+      savedPath,
+      width,
+      height,
+    });
+
+    // Download straight from the visualizer screen when requested, or when we
+    // could not write to the output/ folder at all.
+    if (options.autoDownload !== false || !savedPath) {
+      downloadVideoBlob(blob, baseName);
     }
   }
 

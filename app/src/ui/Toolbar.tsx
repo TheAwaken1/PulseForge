@@ -3,17 +3,37 @@ import { useProjectStore } from '../state/projectStore';
 import { useExportStore } from '../state/exportStore';
 import { useTransportStore } from '../state/transportStore';
 import { saveProject, loadProjectWithPath } from '../project/persistence';
-import { createDefaultProject } from '../types/project';
+import { createDefaultProject, type Project } from '../types/project';
 import {
   ExportOrchestrator,
   estimateExportFileSizeBytes,
+  downloadVideoBlob,
   type ExportQualityMode,
 } from '../export/ExportOrchestrator';
 import { importAudioFile, importVisualFile } from '../utils/audioImport';
 import { useHistoryStore } from '../state/historyStore';
 import { PresetGallery } from './PresetGallery';
 
-const EXPORT_RESOLUTION = { width: 1920, height: 1080 };
+/**
+ * Export resolution presets. All 16:9 so layer layout stays identical to the
+ * 1920x1080 preview; layers scale proportionally at export time.
+ */
+const EXPORT_RESOLUTIONS = [
+  { id: '720p', label: '720p HD (1280 x 720)', width: 1280, height: 720 },
+  { id: '1080p', label: '1080p Full HD (1920 x 1080)', width: 1920, height: 1080 },
+  { id: '1440p', label: '1440p 2K (2560 x 1440)', width: 2560, height: 1440 },
+  { id: '2160p', label: '2160p 4K (3840 x 2160)', width: 3840, height: 2160 },
+] as const;
+type ExportResolutionId = (typeof EXPORT_RESOLUTIONS)[number]['id'];
+const DEFAULT_RESOLUTION_ID: ExportResolutionId = '1080p';
+
+function resolutionById(id: string): (typeof EXPORT_RESOLUTIONS)[number] {
+  return EXPORT_RESOLUTIONS.find((r) => r.id === id) ?? EXPORT_RESOLUTIONS[1];
+}
+
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
 
 interface ToolbarProps {
   onQuickCreate?: () => void;
@@ -36,6 +56,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
     const saved = localStorage.getItem('pulseforge.export.mode');
     return saved === 'crisp' ? 'crisp' : 'compatibility';
   });
+  const [exportResolutionId, setExportResolutionId] = useState<ExportResolutionId>(() => {
+    const saved = localStorage.getItem('pulseforge.export.resolution') || DEFAULT_RESOLUTION_ID;
+    return resolutionById(saved).id;
+  });
+  const [autoDownload, setAutoDownload] = useState<boolean>(() => {
+    const saved = localStorage.getItem('pulseforge.export.autoDownload');
+    return saved === null ? true : saved === 'true';
+  });
+  const exportResolution = resolutionById(exportResolutionId);
+  const desktopMode = isTauri();
 
   const handleNew = () => {
     if (dirty && !confirm('Discard unsaved changes?')) return;
@@ -87,11 +117,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
     e.target.value = '';
   };
 
-  const handleExport = async () => {
+  // exportProject is passed explicitly because React state (project) may not
+  // have re-rendered yet when the resolution was just changed in the dialog.
+  const handleExport = async (exportProject: Project = project) => {
     if (exportStore.status !== 'idle') return;
     const orchestrator = new ExportOrchestrator();
     exportRef.current = orchestrator;
-    const audioAsset = project.assets.find((a) => a.id === project.audio.assetId);
+    const audioAsset = exportProject.assets.find((a) => a.id === exportProject.audio.assetId);
     if (!audioAsset) {
       alert('No audio loaded. Import audio first.');
       exportRef.current = null;
@@ -104,11 +136,34 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
     };
     transport.pause();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const outputPath = `output/${project.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.mp4`;
+    const fileName = `${exportProject.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.mp4`;
+    let outputPath = `output/${fileName}`;
+
+    // Desktop build: let the user choose where the video goes instead of
+    // silently writing into the app folder.
+    if (desktopMode) {
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const chosen = await save({
+          defaultPath: fileName,
+          filters: [{ name: 'MP4 Video', extensions: ['mp4'] }],
+        });
+        if (!chosen) {
+          exportRef.current = null;
+          if (restoreState.wasPlaying) transport.play();
+          return;
+        }
+        outputPath = chosen;
+      } catch (err) {
+        console.warn('Save dialog unavailable, using output/ folder:', err);
+      }
+    }
+
     try {
-      await orchestrator.export(project, outputPath, audioAsset.relPath, {
+      await orchestrator.export(exportProject, outputPath, audioAsset.relPath, {
         fps: exportFps,
         mode: exportMode,
+        autoDownload,
       });
     } finally {
       const t = useTransportStore.getState();
@@ -116,29 +171,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
       if (restoreState.wasPlaying) t.play();
       exportRef.current = null;
     }
-
-    // Auto-reset to idle after a brief "done" display
-    setTimeout(() => {
-      if (useExportStore.getState().status === 'done') {
-        useExportStore.getState().reset();
-      }
-    }, 3000);
+  };
+  const handleDownloadResult = () => {
+    const result = useExportStore.getState().result;
+    if (result?.blob) downloadVideoBlob(result.blob, result.fileName);
   };
   const handleCancelExport = () => {
     exportRef.current?.cancel();
   };
   const handleOpenExportSettings = () => {
     if (exportStore.status !== 'idle') return;
-    if (
-      project.resolution.width !== EXPORT_RESOLUTION.width ||
-      project.resolution.height !== EXPORT_RESOLUTION.height
-    ) {
-      setProject({
-        ...project,
-        resolution: { ...EXPORT_RESOLUTION },
-        updatedAt: new Date().toISOString(),
-      });
-    }
     setExportModalOpen(true);
   };
   const handleConfirmExport = () => {
@@ -146,12 +188,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
     setExportFps(nextFps);
     localStorage.setItem('pulseforge.export.fps', String(nextFps));
     localStorage.setItem('pulseforge.export.mode', exportMode);
+    localStorage.setItem('pulseforge.export.resolution', exportResolution.id);
+    localStorage.setItem('pulseforge.export.autoDownload', String(autoDownload));
+    // The export renders at project.resolution; apply the chosen preset there.
+    let exportProject = project;
+    if (
+      project.resolution.width !== exportResolution.width ||
+      project.resolution.height !== exportResolution.height
+    ) {
+      exportProject = {
+        ...project,
+        resolution: { width: exportResolution.width, height: exportResolution.height },
+        updatedAt: new Date().toISOString(),
+      };
+      setProject(exportProject);
+    }
     setExportModalOpen(false);
-    void handleExport();
+    void handleExport(exportProject);
   };
   const estimatedBytes = estimateExportFileSizeBytes(
-    EXPORT_RESOLUTION.width,
-    EXPORT_RESOLUTION.height,
+    exportResolution.width,
+    exportResolution.height,
     exportFps,
     project.durationSec,
   );
@@ -225,6 +282,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalTitle}>Export Settings</div>
             <label style={styles.modalField}>
+              <span>Resolution</span>
+              <select
+                value={exportResolution.id}
+                onChange={(e) => setExportResolutionId(resolutionById(e.target.value).id)}
+                style={styles.modalInput}
+              >
+                {EXPORT_RESOLUTIONS.map((r) => (
+                  <option key={r.id} value={r.id}>{r.label}</option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.modalField}>
               <span>FPS</span>
               <input
                 type="number"
@@ -247,6 +316,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
                 <option value="crisp">Crisp (CRF 14, higher quality)</option>
               </select>
             </label>
+            {!desktopMode && (
+              <label style={styles.modalCheck}>
+                <input
+                  type="checkbox"
+                  checked={autoDownload}
+                  onChange={(e) => setAutoDownload(e.target.checked)}
+                />
+                <span>Download the video automatically when the export finishes</span>
+              </label>
+            )}
             <div style={styles.modalHint}>
               Duration: {project.durationSec.toFixed(2)}s | Frames: {Math.max(1, Math.round(project.durationSec * exportFps))}
             </div>
@@ -254,6 +333,31 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
             <div style={styles.modalActions}>
               <button className="ghost" onClick={() => setExportModalOpen(false)}>Cancel</button>
               <button className="primary" onClick={handleConfirmExport}>Start Export</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {exportStore.status === 'done' && exportStore.result && (
+        <div style={styles.modalBackdrop} onClick={() => exportStore.reset()}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalTitle}>Export Complete</div>
+            <div style={styles.modalBody}>
+              Your video is ready ({exportStore.result.width} x {exportStore.result.height}).
+            </div>
+            <div style={styles.modalFile}>{exportStore.result.fileName}</div>
+            {exportStore.result.savedPath && (
+              <div style={styles.modalHint}>
+                {desktopMode ? 'Saved to: ' : 'A copy was also saved to the app output folder: '}
+                {exportStore.result.savedPath}
+              </div>
+            )}
+            <div style={styles.modalActions}>
+              <button className="ghost" onClick={() => exportStore.reset()}>Close</button>
+              {exportStore.result.blob && (
+                <button className="primary" onClick={handleDownloadResult}>
+                  &#11015; Download Video
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -391,6 +495,30 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: 'var(--text-muted)',
     fontFamily: 'var(--font-mono)',
+    wordBreak: 'break-all',
+  },
+  modalCheck: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+  },
+  modalBody: {
+    fontSize: 13,
+    color: 'var(--text-secondary)',
+  },
+  modalFile: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'var(--text-primary)',
+    fontFamily: 'var(--font-mono)',
+    wordBreak: 'break-all',
+    padding: '8px 10px',
+    borderRadius: 8,
+    background: 'var(--bg-hover)',
+    border: '1px solid var(--border)',
   },
   modalActions: {
     display: 'flex',

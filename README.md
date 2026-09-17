@@ -14,7 +14,7 @@ PulseForge is a fully local, cross-platform audio visualizer editor. Turn a back
 - **Directed audio reactions** - Target supported effects to the full mix, bass, mids, highs, or detected beats, with Beat Punch for sharp music-video impact.
 - **Liquid motion engine** - Add adjustable organic flow to radial spectra, radial waveforms, bottom spectra, circular HD spectra, and oscilloscopes.
 - **Flexible lyrics** - Import timed `.lrc` files, auto-time structured `.txt` lyrics, align supplied lines to real vocal timing with Whisper, or transcribe with local Whisper or the OpenAI Whisper API.
-- **Deterministic MP4 export** - Offline audio analysis produces repeatable, frame-perfect output in the `output/` folder.
+- **Deterministic MP4 export** - Offline audio analysis produces repeatable, frame-perfect output at 720p, 1080p, 1440p, or 4K. The finished video downloads straight from the editor, and a copy is also written to the `output/` folder.
 - **Local project files** - Save, load, autosave, undo, and recover projects without uploading media.
 
 ## Quick Start
@@ -24,7 +24,7 @@ PulseForge is a fully local, cross-platform audio visualizer editor. Turn a back
 3. Add a transparent logo, GIF, or short video. PulseForge centers it in a circular bordered frame and applies a polished color grade, shake, and pulse automatically.
 4. Choose an MP3, WAV, OGG, or FLAC track.
 5. Open the visualizer, press Play, and optionally fine-tune it in the Advanced Editor.
-6. Select **Export MP4**. Finished videos are written to `output/`.
+6. Select **Export Video**, pick a resolution (720p, 1080p, 1440p, or 4K), FPS, and quality, then start the export. When it finishes, an **Export Complete** panel appears with a **Download Video** button. By default the video also downloads automatically to your browser downloads folder, and a copy is written to `output/`.
 
 You can reopen Quick Create from the top toolbar. Choose **Advanced Editor** on the welcome screen when you want to start with an empty layer stack.
 
