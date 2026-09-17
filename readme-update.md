@@ -20,6 +20,7 @@ Brand Visualizer now creates a polished composition without requiring the user t
 
 - Fit mode: `stretch`
 - Audio-reactive shake enabled
+- Vignette enabled (strength `0.85`, radius `0.5`)
 - Background darkness slider available in the inspector
 
 ### Logo
@@ -28,7 +29,7 @@ Brand Visualizer now creates a polished composition without requiring the user t
 - Fit mode: `cover`
 - Frame size: `375`
 - Border enabled at the maximum width: `20`
-- Border color: `#8b7cff`
+- Border color: `#1283ed` (R 18, G 131, B 237)
 - Neon border glow enabled
 - Color Grade, Shake, and Pulse effects enabled
 - Automatic fitting on import
@@ -45,11 +46,11 @@ Default settings:
 | --- | ---: |
 | Radius | 196 |
 | Bar count | 128 |
-| Thickness | 18 |
-| Gain | 2.35 |
-| Liquid amount | 1.35 |
-| Liquid speed | 2.70 |
-| Noise jitter | 0 |
+| Thickness | 20 |
+| Gain | 0.80 |
+| Liquid amount | 1.5 |
+| Liquid speed | 1.35 |
+| Noise jitter | 0.03 |
 | Blend mode | Screen |
 | Color | `#8b7cff` |
 

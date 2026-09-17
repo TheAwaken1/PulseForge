@@ -55,10 +55,10 @@ export function createLogoSpectrumLayer(): RadialSpectrumLayerConfig {
     centerX: staticParam(0),
     centerY: staticParam(0),
     radius: staticParam(196),
-    thickness: staticParam(18),
+    thickness: staticParam(20),
     barCount: staticParam(128),
     barGap: staticParam(1),
-    gain: staticParam(2.35),
+    gain: staticParam(0.80),
     smoothing: {
       attack: staticParam(0.58),
       release: staticParam(0.14),
@@ -76,8 +76,8 @@ export function createLogoSpectrumLayer(): RadialSpectrumLayerConfig {
     },
     roundedCaps: true,
     liquidMotion: true,
-    liquidAmount: staticParam(1.35),
-    liquidSpeed: staticParam(2.70),
-    noiseJitter: staticParam(0),
+    liquidAmount: staticParam(1.5),
+    liquidSpeed: staticParam(1.35),
+    noiseJitter: staticParam(0.03),
   };
 }

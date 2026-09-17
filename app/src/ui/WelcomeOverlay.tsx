@@ -15,6 +15,7 @@ import {
   type ColorGradeEffectConfig,
   type LogoLayerConfig,
   type ShakeEffectConfig,
+  type VignetteEffectConfig,
 } from '../types/project';
 import { PresetArtwork } from './PresetArtwork';
 import {
@@ -356,7 +357,7 @@ function createBackgroundLayer(assetId: string): BackgroundLayerConfig {
   return {
     id: createLayerId(), name: 'Background', kind: 'background', enabled: true,
     opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(),
-    effects: [createBrandShakeEffect(5, 0.004, 8, 1.8)],
+    effects: [createBrandShakeEffect(5, 0.004, 8, 1.8), createBrandVignetteEffect()],
     assetId, fit: 'stretch', darkness: staticParam(0),
   };
 }
@@ -372,7 +373,7 @@ function createLogoLayer(assetId: string): LogoLayerConfig {
     ],
     assetId, anchor: 'center', frameShape: 'circle', cornerRadius: staticParam(30),
     fitMode: 'cover', autoFitOnImport: true, frameSize: staticParam(375), padding: staticParam(8),
-    border: { enabled: true, width: staticParam(20), color: staticParam('#8b7cff'), glow: true },
+    border: { enabled: true, width: staticParam(20), color: staticParam('#1283ed'), glow: true },
     _refitSeq: 0,
   };
 }
@@ -393,6 +394,17 @@ function createBrandShakeEffect(
     speed: staticParam(speed),
     audioDriven: true,
     audioAmount: staticParam(audioAmount),
+  };
+}
+
+function createBrandVignetteEffect(): VignetteEffectConfig {
+  return {
+    id: createEffectId(),
+    name: 'Vignette',
+    kind: 'vignette',
+    enabled: true,
+    strength: staticParam(0.85),
+    radius: staticParam(0.5),
   };
 }
 
