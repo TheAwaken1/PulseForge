@@ -5,6 +5,7 @@ import type { RadialSpectrumLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
 import { SmoothingFilter, applyCompression } from '../audio/smoothing';
 import { DESIGN_HEIGHT, DESIGN_WIDTH, clamp, hexStringToNumber, lerpColor, resolvePositionParam } from './layerUtils';
+import { liquidMagnitude } from './liquidMotion';
 
 /**
  * Radial Spectrum visualizer: bars arranged in a circle around a center point.
@@ -20,6 +21,8 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
   private config: RadialSpectrumLayerConfig;
   private smoother: SmoothingFilter;
   private peaks: Float32Array;
+  private beatFlash = 0;
+  private lastT = -1;
 
   constructor(config: RadialSpectrumLayerConfig) {
     this.id = config.id;
@@ -46,6 +49,15 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
   update(ctx: RenderContext, t: number, audio: AudioFrame): void {
     this.graphics.clear();
 
+    // Beat flash: instant ring expansion on each beat
+    const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    this.lastT = t;
+    if (audio.beat) {
+      this.beatFlash = 1.0;
+    } else {
+      this.beatFlash *= Math.pow(0.65, dt * 60);
+    }
+
     const barCount = Math.round(sampleParam(this.config.barCount, t));
     const designScale = Math.min(ctx.width / DESIGN_WIDTH, ctx.height / DESIGN_HEIGHT);
     const radius = sampleParam(this.config.radius, t) * designScale;
@@ -58,6 +70,10 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
     const centerY = sampleParam(this.config.centerY, t);
     const peakEnabled = sampleParam(this.config.peakHold.enabled, t);
     const peakDecay = sampleParam(this.config.peakHold.decay, t);
+    const liquidAmount = this.config.liquidMotion
+      ? (this.config.liquidAmount ? sampleParam(this.config.liquidAmount, t) : 0.65)
+      : 0;
+    const liquidSpeed = this.config.liquidSpeed ? sampleParam(this.config.liquidSpeed, t) : 1;
 
     // Smoothing
     this.smoother.setParams(
@@ -100,7 +116,7 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
     const cy = resolvePositionParam(centerY, ctx.height, ctx.height / 2, DESIGN_HEIGHT);
 
     const angleStep = (2 * Math.PI) / barCount;
-    const maxBarHeight = radius * 0.8;
+    const maxBarHeight = radius * 0.8 * (1 + this.beatFlash * 0.25);
     const halfThick = clamp(thickness / 2, 0.8, 16);
 
     for (let i = 0; i < barCount; i++) {
@@ -108,6 +124,17 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
       const angleFrac = i / Math.max(1, barCount - 1);
       const color = gradientColorAtAngle(angleFrac, colorMode, gradient, solidColor);
       let magnitude = Math.max(0, Math.min(1, smoothed[i]));
+
+      // Layer two traveling waves over the actual frequency response. Each
+      // region of the ring swells at a different rate, while local contrast
+      // keeps distinct instruments from collapsing into uniform breathing.
+      let liquidRadiusOffset = 0;
+      if (liquidAmount > 0) {
+        const liquid = liquidMagnitude(smoothed, i, t, audio, liquidAmount, liquidSpeed);
+        const energyDrive = 0.28 + clamp(audio.rms, 0, 1) * 0.72;
+        magnitude = liquid.magnitude;
+        liquidRadiusOffset = liquid.wave * liquidAmount * radius * 0.018 * energyDrive;
+      }
 
       // Noise jitter
       if (noiseJitter > 0) {
@@ -132,10 +159,11 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
       const perpX = -sinA * halfThick;
       const perpY = cosA * halfThick;
 
-      const innerX = cx + radius * cosA;
-      const innerY = cy + radius * sinA;
-      const outerX = cx + (radius + barHeight) * cosA;
-      const outerY = cy + (radius + barHeight) * sinA;
+      const innerRadius = radius + liquidRadiusOffset;
+      const innerX = cx + innerRadius * cosA;
+      const innerY = cy + innerRadius * sinA;
+      const outerX = cx + (innerRadius + barHeight) * cosA;
+      const outerY = cy + (innerRadius + barHeight) * sinA;
 
       // Draw filled quadrilateral
       this.graphics
@@ -145,6 +173,11 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
         .lineTo(outerX - perpX, outerY - perpY)
         .closePath()
         .fill({ color });
+
+      if (this.config.roundedCaps) {
+        this.graphics.circle(innerX, innerY, halfThick).fill({ color });
+        this.graphics.circle(outerX, outerY, halfThick).fill({ color });
+      }
 
       // Peak cap
       if (peakEnabled && this.peaks[i] > magnitude + 0.02) {

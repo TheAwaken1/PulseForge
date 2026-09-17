@@ -9,9 +9,11 @@ import {
   type ShaderLayerConfig, type ShaderType,
   type HDBarsReflectionLayerConfig, type HDSonicSpikesLayerConfig,
   type HDCircularSpectrumLayerConfig, type ParticleFieldLayerConfig,
-  type OscilloscopeLayerConfig, type TextLayerConfig, type EnergyRibbonLayerConfig,
+  type OscilloscopeLayerConfig, type TextLayerConfig,
   type DotSphereEqualizerLayerConfig, type LyricsLayerConfig,
+  type SpectrogramLayerConfig,
 } from '../types/project';
+import { createLogoSpectrumLayer } from '../layers/logoSpectrumDefaults';
 
 const LAYER_ICONS: Record<string, string> = {
   background: '\u2588',
@@ -25,10 +27,10 @@ const LAYER_ICONS: Record<string, string> = {
   hdCircularSpectrum: '\u29BF',
   particleField: '\u2729',
   oscilloscope: '\u223F',
-  energyRibbon: '=',
   dotSphereEqualizer: '\u25CF',
   text: 'T',
   lyrics: '\u266B',
+  spectrogram: '\u2571',
 };
 
 interface LayersPanelProps {
@@ -36,9 +38,74 @@ interface LayersPanelProps {
 }
 
 export const LayersPanel: React.FC<LayersPanelProps> = ({ onCollapse }) => {
-  const { project, addLayer, removeLayer, toggleLayerEnabled } = useProjectStore();
+  const { project, addLayer, removeLayer, reorderLayers, toggleLayerEnabled, updateProjectField } = useProjectStore();
   const { selectedLayerId, selectLayer } = useSelectionStore();
   const layers = project.layers;
+  const displayedLayers = [...layers].reverse();
+  const [draggedLayerId, setDraggedLayerId] = React.useState<string | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{
+    layerId: string;
+    position: 'before' | 'after';
+  } | null>(null);
+
+  const clearDragState = () => {
+    setDraggedLayerId(null);
+    setDropTarget(null);
+  };
+
+  const handleDragStart = (event: React.DragEvent<HTMLDivElement>, layerId: string) => {
+    setDraggedLayerId(layerId);
+    setDropTarget(null);
+    selectLayer(layerId);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', layerId);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>, layerId: string) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (!draggedLayerId || draggedLayerId === layerId) {
+      setDropTarget(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const position = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    setDropTarget((current) => (
+      current?.layerId === layerId && current.position === position
+        ? current
+        : { layerId, position }
+    ));
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const sourceId = draggedLayerId || event.dataTransfer.getData('text/plain');
+    if (!sourceId || !dropTarget || sourceId === dropTarget.layerId) {
+      clearDragState();
+      return;
+    }
+
+    // The renderer stores layers back-to-front, while the panel presents the
+    // familiar editor convention of frontmost at the top.
+    const nextDisplayOrder = displayedLayers.filter((layer) => layer.id !== sourceId);
+    const targetIndex = nextDisplayOrder.findIndex((layer) => layer.id === dropTarget.layerId);
+    if (targetIndex < 0) {
+      clearDragState();
+      return;
+    }
+    const insertAt = targetIndex + (dropTarget.position === 'after' ? 1 : 0);
+    const sourceLayer = layers.find((layer) => layer.id === sourceId);
+    if (!sourceLayer) {
+      clearDragState();
+      return;
+    }
+    nextDisplayOrder.splice(insertAt, 0, sourceLayer);
+    const nextInternalOrder = [...nextDisplayOrder].reverse();
+    const fromIndex = layers.findIndex((layer) => layer.id === sourceId);
+    const toIndex = nextInternalOrder.findIndex((layer) => layer.id === sourceId);
+    reorderLayers(fromIndex, toIndex);
+    clearDragState();
+  };
 
   const handleAddLayer = (kind: string) => {
     let layer: LayerAny;
@@ -48,15 +115,12 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ onCollapse }) => {
       case 'radialSpectrum': layer = createRadialSpectrumLayer(); break;
       case 'radialWaveform': layer = createRadialWaveformLayer(); break;
       case 'bottomSpectrum': layer = createBottomSpectrumLayer(); break;
-      case 'hdRainbowBarsReflection': layer = createHDBarsReflectionLayer(); break;
-      case 'hdSonicWaveSpikes': layer = createHDSonicSpikesLayer(); break;
-      case 'hdCircularSpectrum': layer = createHDCircularSpectrumLayer(); break;
       case 'particleField': layer = createParticleFieldLayer(); break;
       case 'oscilloscope': layer = createOscilloscopeLayer(); break;
-      case 'energyRibbon': layer = createEnergyRibbonLayer(); break;
-      case 'dotSphereEqualizer': layer = createDotSphereEqualizerLayer(); break;
       case 'text': layer = createTextLayer(); break;
       case 'lyrics': layer = createLyricsLayer(); break;
+      case 'spectrogram': layer = createSpectrogramLayer(); break;
+      case 'logoSpectrum': layer = createLogoSpectrumLayer(); break;
       case 'shader-tunnel': layer = createShaderLayer('tunnel', 'Tunnel'); break;
       case 'shader-plasma': layer = createShaderLayer('plasma', 'Plasma'); break;
       case 'shader-starfield': layer = createShaderLayer('starfield', 'Starfield'); break;
@@ -69,10 +133,19 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ onCollapse }) => {
       case 'shader-nebula': layer = createShaderLayer('nebula', 'Nebula'); break;
       case 'shader-geometric': layer = createShaderLayer('geometric', 'Geometric'); break;
       case 'shader-liquid': layer = createShaderLayer('liquid', 'Liquid'); break;
-      case 'shader-displacement': layer = createShaderLayer('displacement', 'Fullscreen Displacement'); break;
+      case 'shader-meshWave': layer = createShaderLayer('meshWave', 'Neon Mesh Wave'); break;
+      case 'shader-kaleidoReactor': layer = createShaderLayer('kaleidoReactor', 'Kaleido Reactor'); break;
       default: return;
     }
-    addLayer(layer);
+    if (kind === 'logoSpectrum') {
+      const logoIndex = project.layers.findIndex((item) => item.kind === 'logo');
+      const insertAt = logoIndex >= 0 ? logoIndex : project.layers.length;
+      const nextLayers = [...project.layers];
+      nextLayers.splice(insertAt, 0, layer);
+      updateProjectField('layers', nextLayers);
+    } else {
+      addLayer(layer);
+    }
     selectLayer(layer.id);
   };
 
@@ -96,29 +169,26 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ onCollapse }) => {
           style={styles.addSelect}
         >
           <option value="">+ Add</option>
-          <optgroup label="Classic">
+          <optgroup label="Assets">
             <option value="background">Background</option>
             <option value="logo">Logo</option>
+          </optgroup>
+          <optgroup label="Build a Visualizer">
             <option value="radialSpectrum">Radial Spectrum</option>
             <option value="radialWaveform">Radial Waveform</option>
             <option value="bottomSpectrum">Bottom Spectrum</option>
-          </optgroup>
-          <optgroup label="HD Visualizers">
-            <option value="hdRainbowBarsReflection">HD Rainbow Bars + Reflection</option>
-            <option value="hdSonicWaveSpikes">HD Sonic Wave Spikes</option>
-            <option value="hdCircularSpectrum">HD Circular Spectrum</option>
-            <option value="dotSphereEqualizer">Dot Sphere Equalizer</option>
-          </optgroup>
-          <optgroup label="Audio Reactive">
             <option value="particleField">Particle Field</option>
             <option value="oscilloscope">Oscilloscope</option>
-            <option value="energyRibbon">Energy Ribbon</option>
+            <option value="logoSpectrum">Logo Spectrum Halo</option>
           </optgroup>
-          <optgroup label="Overlay">
+          <optgroup label="Typography">
             <option value="text">Text</option>
             <option value="lyrics">Lyrics (LRC)</option>
           </optgroup>
-          <optgroup label="Shader FX">
+          <optgroup label="Analysis">
+            <option value="spectrogram">Spectrogram (Waterfall)</option>
+          </optgroup>
+          <optgroup label="Motion Backgrounds">
             <option value="shader-starfield">Starfield</option>
             <option value="shader-vortex">Vortex</option>
             <option value="shader-fractalNoise">Fractal Noise</option>
@@ -127,24 +197,45 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ onCollapse }) => {
             <option value="shader-aurora">Aurora</option>
             <option value="shader-nebula">Nebula</option>
             <option value="shader-liquid">Liquid</option>
-            <option value="shader-displacement">Fullscreen Displacement</option>
+            <option value="shader-meshWave">Neon Mesh Wave</option>
+            <option value="shader-kaleidoReactor">Kaleido Reactor</option>
           </optgroup>
         </select>
       </div>
 
       <div style={styles.list} className="scrollable">
-        {layers.map((layer) => {
+        {layers.length > 1 && (
+          <div style={styles.stackHint}>
+            <span>Front</span>
+            <span>Drag to reorder</span>
+          </div>
+        )}
+        {displayedLayers.map((layer) => {
           const isSelected = selectedLayerId === layer.id;
+          const isDragging = draggedLayerId === layer.id;
+          const dropBefore = dropTarget?.layerId === layer.id && dropTarget.position === 'before';
+          const dropAfter = dropTarget?.layerId === layer.id && dropTarget.position === 'after';
           return (
             <div
               key={layer.id}
+              draggable
+              aria-grabbed={isDragging}
+              title="Drag to change layer order"
               style={{
                 ...styles.layerItem,
                 background: isSelected ? 'var(--accent-dim)' : 'transparent',
                 borderLeft: isSelected ? '3px solid var(--accent)' : '3px solid transparent',
+                borderTop: dropBefore ? '2px solid var(--accent-bright)' : '2px solid transparent',
+                borderBottom: dropAfter ? '2px solid var(--accent-bright)' : '1px solid var(--border)',
+                opacity: isDragging ? 0.45 : 1,
               }}
               onClick={() => selectLayer(layer.id)}
+              onDragStart={(event) => handleDragStart(event, layer.id)}
+              onDragOver={(event) => handleDragOver(event, layer.id)}
+              onDrop={handleDrop}
+              onDragEnd={clearDragState}
             >
+              <div style={styles.dragHandle} aria-hidden="true">&#x22EE;&#x22EE;</div>
               <button
                 className="ghost"
                 style={{
@@ -182,6 +273,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ onCollapse }) => {
             </div>
           </div>
         )}
+        {layers.length > 1 && <div style={styles.backLabel}>Back</div>}
       </div>
     </div>
   );
@@ -197,7 +289,7 @@ function createBackgroundLayer(): BackgroundLayerConfig {
   return {
     id: createLayerId(), name: 'Background', kind: 'background', enabled: true,
     opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(), effects: [],
-    assetId: '', fit: 'cover',
+    assetId: '', fit: 'cover', darkness: staticParam(0),
   };
 }
 
@@ -208,15 +300,15 @@ function createLogoLayer(): LogoLayerConfig {
     assetId: '', anchor: 'center',
     frameShape: 'circle',
     cornerRadius: staticParam(30),
-    fitMode: 'fill',
+    fitMode: 'cover',
     autoFitOnImport: true,
-    frameSize: staticParam(300),
-    padding: staticParam(0),
+    frameSize: staticParam(375),
+    padding: staticParam(8),
     border: {
       enabled: true,
-      width: staticParam(3),
-      color: staticParam('#6c5ce7'),
-      glow: false,
+      width: staticParam(20),
+      color: staticParam('#8b7cff'),
+      glow: true,
     },
     _refitSeq: 0,
   };
@@ -245,6 +337,7 @@ function createRadialWaveformLayer(): RadialWaveformLayerConfig {
     radius: staticParam(130), amplitude: staticParam(100), lineWidth: staticParam(2),
     smoothing: { attack: staticParam(0.3), release: staticParam(0.06) },
     color: staticParam('#a29bfe'),
+    liquidMotion: true, liquidAmount: staticParam(0.75), liquidSpeed: staticParam(1.25),
   };
 }
 
@@ -256,6 +349,7 @@ function createBottomSpectrumLayer(): BottomSpectrumLayerConfig {
     barCount: staticParam(64), gain: staticParam(1.5),
     smoothing: { attack: staticParam(0.35), release: staticParam(0.08) },
     color: staticParam('#00cec9'),
+    liquidMotion: true, liquidAmount: staticParam(0.45), liquidSpeed: staticParam(0.85),
   };
 }
 
@@ -355,6 +449,7 @@ function createHDCircularSpectrumLayer(): HDCircularSpectrumLayerConfig {
     innerRing: { enabled: staticParam(true), width: staticParam(2), color: staticParam('#ffffff'), glowEnabled: staticParam(true) },
     outerRing: { enabled: staticParam(false), width: staticParam(2), color: staticParam('#ffffff'), glowEnabled: staticParam(false) },
     gamma: staticParam(1.40), contrast: staticParam(1.78), rotationSpeed: staticParam(0.10),
+    liquidMotion: true, liquidAmount: staticParam(0.65), liquidSpeed: staticParam(1.15),
   };
 }
 
@@ -384,6 +479,7 @@ function createOscilloscopeLayer(): OscilloscopeLayerConfig {
     mirrorY: staticParam(0.5), circularRadius: staticParam(150), circularAmplitude: staticParam(80),
     lineGradient: { enabled: staticParam(false), color1: staticParam('#ff00ff'), color2: staticParam('#00ffff') },
     gamma: staticParam(1), stereoSpread: staticParam(0), scanlineEffect: staticParam(false),
+    liquidMotion: true, liquidAmount: staticParam(0.55), liquidSpeed: staticParam(1.4),
   };
 }
 
@@ -407,6 +503,7 @@ function createLyricsLayer(): LyricsLayerConfig {
     id: createLayerId(), name: 'Lyrics', kind: 'lyrics', enabled: true,
     opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(), effects: [],
     lrcContent: '',
+    timingOffsetSec: staticParam(0), timingScale: staticParam(1),
     fontFamily: 'Arial', fontSize: staticParam(40), fontWeight: 'bold',
     color: staticParam('#ffffff'), textAlign: 'center',
     positionX: staticParam(0.5), positionY: staticParam(0.82),
@@ -417,19 +514,16 @@ function createLyricsLayer(): LyricsLayerConfig {
   };
 }
 
-function createEnergyRibbonLayer(): EnergyRibbonLayerConfig {
+function createSpectrogramLayer(): SpectrogramLayerConfig {
   return {
-    id: createLayerId(), name: 'Energy Ribbon', kind: 'energyRibbon', enabled: true,
-    opacity: staticParam(0.95), blendMode: 'add', transform: defaultTransform(), effects: [],
-    intensity: staticParam(1),
-    glowStrength: staticParam(1.3),
-    spikeSensitivity: staticParam(1),
-    ribbonThickness: staticParam(10),
-    smoothing: { attack: staticParam(0.35), release: staticParam(0.05) },
-    colorTheme: staticParam('electric'),
-    mirrorReflection: staticParam(true),
-    sampleCount: staticParam(192),
-    spikeCount: staticParam(96),
+    id: createLayerId(), name: 'Spectrogram', kind: 'spectrogram', enabled: true,
+    opacity: staticParam(0.9), blendMode: 'normal', transform: defaultTransform(), effects: [],
+    colorScheme: 'heat',
+    gain: staticParam(1.5),
+    logScale: false,
+    beatMarker: true,
+    heightFraction: staticParam(0.25),
+    positionY: staticParam(1.0),
   };
 }
 
@@ -493,14 +587,33 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     overflow: 'auto',
   },
+  stackHint: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '6px 10px',
+    color: 'var(--text-dim)',
+    fontSize: 9,
+    fontWeight: 600,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    borderBottom: '1px solid var(--border)',
+  },
   layerItem: {
     display: 'flex',
     alignItems: 'center',
-    padding: '8px 10px 8px 0',
-    cursor: 'pointer',
-    borderBottom: '1px solid var(--border)',
+    padding: '6px 10px 6px 0',
+    cursor: 'grab',
     gap: 6,
-    transition: 'background 0.1s',
+    transition: 'background 0.1s, opacity 0.1s, border-color 0.1s',
+    userSelect: 'none',
+  },
+  dragHandle: {
+    width: 10,
+    color: 'var(--text-dim)',
+    fontSize: 12,
+    lineHeight: 0.55,
+    letterSpacing: -3,
+    flexShrink: 0,
   },
   visToggle: {
     padding: '2px 4px',
@@ -552,5 +665,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 28,
     color: 'var(--text-dim)',
     marginBottom: 8,
+  },
+  backLabel: {
+    padding: '6px 10px',
+    color: 'var(--text-dim)',
+    fontSize: 9,
+    fontWeight: 600,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
 };

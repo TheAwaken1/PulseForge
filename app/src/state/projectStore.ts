@@ -3,6 +3,39 @@ import {
   Project, LayerAny, EffectAny, Asset, createDefaultProject,
   createLayerId, createEffectId, staticParam
 } from '../types/project';
+import { createLogoMatchedPulse, createLogoMatchedShake } from '../layers/logoSpectrumDefaults';
+
+function upgradeLegacyLogoSpectrum(project: Project): Project {
+  let changed = false;
+  const layers = project.layers.map((layer) => {
+    if (layer.kind !== 'radialSpectrum' || layer.name !== 'Logo Spectrum Halo' || layer.liquidMotion !== undefined) {
+      return layer;
+    }
+
+    changed = true;
+    const effects = [...layer.effects];
+    if (!effects.some((effect) => effect.kind === 'shake')) effects.push(createLogoMatchedShake());
+    if (!effects.some((effect) => effect.kind === 'pulse')) effects.push(createLogoMatchedPulse());
+
+    return {
+      ...layer,
+      effects,
+      blendMode: 'screen' as const,
+      radius: staticParam(196),
+      thickness: staticParam(18),
+      barCount: staticParam(128),
+      gain: staticParam(2.35),
+      smoothing: { attack: staticParam(0.58), release: staticParam(0.14) },
+      compressionPow: staticParam(1.08),
+      liquidMotion: true,
+      liquidAmount: staticParam(1.35),
+      liquidSpeed: staticParam(2.70),
+      noiseJitter: staticParam(0),
+    };
+  });
+
+  return changed ? { ...project, layers } : project;
+}
 
 interface ProjectState {
   project: Project;
@@ -41,7 +74,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   dirty: false,
   projectPath: null,
 
-  setProject: (project) => set({ project, dirty: false }),
+  setProject: (project) => set({ project: upgradeLegacyLogoSpectrum(project), dirty: false }),
   setProjectPath: (path) => set({ projectPath: path }),
   markDirty: () => set({ dirty: true }),
   markClean: () => set({ dirty: false }),
@@ -106,6 +139,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   reorderLayers: (fromIndex, toIndex) =>
     set((state) => {
+      if (
+        fromIndex === toIndex
+        || fromIndex < 0
+        || toIndex < 0
+        || fromIndex >= state.project.layers.length
+        || toIndex >= state.project.layers.length
+      ) {
+        return state;
+      }
       const layers = [...state.project.layers];
       const [moved] = layers.splice(fromIndex, 1);
       layers.splice(toIndex, 0, moved);

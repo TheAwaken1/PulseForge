@@ -1,6 +1,7 @@
 import React from 'react';
 import { sampleParam, type HDCircularSpectrumLayerConfig } from '../../../types/project';
 import { Section, Field, RangeInput } from '../SharedWidgets';
+import { LiquidMotionControls } from './LiquidMotionControls';
 
 interface Props {
   layer: HDCircularSpectrumLayerConfig;
@@ -74,6 +75,7 @@ export const HDCircularSpectrumControls: React.FC<Props> = ({ layer, handleParam
     <Field label="Rotation Speed">
       <RangeInput value={sampleParam(layer.rotationSpeed, 0)} min={-1} max={1} step={0.01} onChange={(v) => handleParamChange('rotationSpeed', v)} />
     </Field>
+    <LiquidMotionControls enabled={layer.liquidMotion} amount={layer.liquidAmount} speed={layer.liquidSpeed} handleParamChange={handleParamChange} />
     <Field label="Gamma">
       <RangeInput value={sampleParam(layer.gamma, 0)} min={0.5} max={1.4} step={0.01} onChange={(v) => handleParamChange('gamma', v)} />
     </Field>

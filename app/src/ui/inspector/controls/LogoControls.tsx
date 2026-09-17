@@ -25,11 +25,11 @@ export const LogoControls: React.FC<Props> = ({ layer, imageAssets, handleAssign
   return (
     <>
       <Section title="Asset">
-        <Field label="Image">
+        <Field label="Logo media">
           <select value={layer.assetId || ''} onChange={(e) => handleAssignAsset(e.target.value)}>
             <option value="">None</option>
             {imageAssets.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
+              <option key={a.id} value={a.id}>{a.name}{a.type === 'video' || a.metadata?.animated ? ' · animated' : ''}</option>
             ))}
           </select>
         </Field>

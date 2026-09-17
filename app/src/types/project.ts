@@ -47,7 +47,7 @@ export type Resolution = { width: number; height: number };
 
 // --- Asset ---
 
-export type AssetType = 'audio' | 'image';
+export type AssetType = 'audio' | 'image' | 'video';
 
 export type Asset = {
   id: string;
@@ -84,6 +84,8 @@ export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply';
 
 // --- Effect types ---
 
+export type AudioTarget = 'full' | 'bass' | 'mids' | 'highs' | 'beat';
+
 export type ShakeEffectConfig = {
   id: string;
   name: string;
@@ -94,6 +96,7 @@ export type ShakeEffectConfig = {
   speed: Param<number>;
   audioDriven: boolean;
   audioAmount: Param<number>;
+  audioTarget?: AudioTarget;
 };
 
 export type PulseEffectConfig = {
@@ -104,6 +107,7 @@ export type PulseEffectConfig = {
   baseScaleAdd: Param<number>;
   audioAmount: Param<number>;
   smoothing: Param<number>;
+  audioTarget?: AudioTarget;
 };
 
 export type StrobeEffectConfig = {
@@ -144,6 +148,7 @@ export type ChromaticAberrationEffectConfig = {
   amountPx: Param<number>;
   angle: Param<number>;
   audioDriven: boolean;
+  audioTarget?: AudioTarget;
 };
 
 export type GradientMapEffectConfig = {
@@ -163,6 +168,58 @@ export type VignetteEffectConfig = {
   radius: Param<number>;
 };
 
+export type BloomEffectConfig = {
+  id: string;
+  name: string;
+  kind: 'bloom';
+  enabled: boolean;
+  threshold: Param<number>;
+  strength: Param<number>;
+  radius: Param<number>;
+  softKnee: Param<number>;
+  toneMap: boolean;
+  audioDriven: boolean;
+  audioAmount: Param<number>;
+  audioTarget?: AudioTarget;
+};
+
+export type ColorGradeEffectConfig = {
+  id: string;
+  name: string;
+  kind: 'colorGrade';
+  enabled: boolean;
+  hue: Param<number>;
+  saturation: Param<number>;
+  contrast: Param<number>;
+  brightness: Param<number>;
+  audioDriven: boolean;
+  audioAmount: Param<number>;
+  audioTarget?: AudioTarget;
+};
+
+export type PixelateEffectConfig = {
+  id: string;
+  name: string;
+  kind: 'pixelate';
+  enabled: boolean;
+  pixelSize: Param<number>;
+  mix: Param<number>;
+  audioDriven: boolean;
+  audioAmount: Param<number>;
+  audioTarget?: AudioTarget;
+};
+
+export type BeatPunchEffectConfig = {
+  id: string;
+  name: string;
+  kind: 'beatPunch';
+  enabled: boolean;
+  zoomAmount: Param<number>;
+  rotationDeg: Param<number>;
+  positionPx: Param<number>;
+  decayMs: Param<number>;
+};
+
 export type EffectAny =
   | ShakeEffectConfig
   | PulseEffectConfig
@@ -171,7 +228,11 @@ export type EffectAny =
   | BlurEffectConfig
   | ChromaticAberrationEffectConfig
   | GradientMapEffectConfig
-  | VignetteEffectConfig;
+  | VignetteEffectConfig
+  | BloomEffectConfig
+  | ColorGradeEffectConfig
+  | PixelateEffectConfig
+  | BeatPunchEffectConfig;
 
 export type EffectKind = EffectAny['kind'];
 
@@ -190,6 +251,8 @@ export type ShaderType =
   | 'nebula'
   | 'geometric'
   | 'liquid'
+  | 'meshWave'
+  | 'kaleidoReactor'
   | 'displacement';
 
 // --- Layer types ---
@@ -206,10 +269,10 @@ export type LayerKind =
   | 'hdCircularSpectrum'
   | 'particleField'
   | 'oscilloscope'
-  | 'energyRibbon'
   | 'dotSphereEqualizer'
   | 'text'
-  | 'lyrics';
+  | 'lyrics'
+  | 'spectrogram';
 
 export type LogoFrameShape = 'none' | 'circle' | 'square' | 'rounded';
 
@@ -228,6 +291,8 @@ export type BackgroundLayerConfig = LayerBase & {
   kind: 'background';
   assetId: string;
   fit: 'cover' | 'contain' | 'stretch';
+  /** Multiplicative image darkening, where 0 is unchanged and 1 is black. */
+  darkness?: Param<number>;
 };
 
 export type LogoBorder = {
@@ -275,6 +340,11 @@ export type RadialSpectrumLayerConfig = LayerBase & {
     solid: Param<string>;
     gradient?: Param<{ stops: { pos: number; color: string }[] }>;
   };
+  roundedCaps?: boolean;
+  /** Organic, frequency-local deformation for less uniform radial motion. */
+  liquidMotion?: boolean;
+  liquidAmount?: Param<number>;
+  liquidSpeed?: Param<number>;
   noiseJitter: Param<number>;
 };
 
@@ -287,6 +357,9 @@ export type RadialWaveformLayerConfig = LayerBase & {
   lineWidth: Param<number>;
   smoothing: { attack: Param<number>; release: Param<number> };
   color: Param<string>;
+  liquidMotion?: boolean;
+  liquidAmount?: Param<number>;
+  liquidSpeed?: Param<number>;
 };
 
 export type BottomSpectrumLayerConfig = LayerBase & {
@@ -299,6 +372,9 @@ export type BottomSpectrumLayerConfig = LayerBase & {
   gain: Param<number>;
   smoothing: { attack: Param<number>; release: Param<number> };
   color: Param<string>;
+  liquidMotion?: boolean;
+  liquidAmount?: Param<number>;
+  liquidSpeed?: Param<number>;
 };
 
 export type HDBarsReflectionLayerConfig = LayerBase & {
@@ -382,6 +458,9 @@ export type HDCircularSpectrumLayerConfig = LayerBase & {
   gamma: Param<number>;
   contrast: Param<number>;
   rotationSpeed: Param<number>;
+  liquidMotion?: boolean;
+  liquidAmount?: Param<number>;
+  liquidSpeed?: Param<number>;
 };
 
 export type ParticleFieldLayerConfig = LayerBase & {
@@ -433,6 +512,9 @@ export type OscilloscopeLayerConfig = LayerBase & {
   gamma: Param<number>;
   stereoSpread: Param<number>;
   scanlineEffect: Param<boolean>;
+  liquidMotion?: boolean;
+  liquidAmount?: Param<number>;
+  liquidSpeed?: Param<number>;
 };
 
 export type TextLayerConfig = LayerBase & {
@@ -456,21 +538,6 @@ export type TextLayerConfig = LayerBase & {
   strokeEnabled: Param<boolean>;
   strokeColor: Param<string>;
   strokeWidth: Param<number>;
-};
-
-export type EnergyRibbonTheme = 'electric' | 'ice' | 'sunset';
-
-export type EnergyRibbonLayerConfig = LayerBase & {
-  kind: 'energyRibbon';
-  intensity: Param<number>;
-  glowStrength: Param<number>;
-  spikeSensitivity: Param<number>;
-  ribbonThickness: Param<number>;
-  smoothing: { attack: Param<number>; release: Param<number> };
-  colorTheme: Param<EnergyRibbonTheme>;
-  mirrorReflection: Param<boolean>;
-  sampleCount: Param<number>;
-  spikeCount: Param<number>;
 };
 
 export type DotSphereGradientPreset = 'rainbow' | 'cool' | 'warm';
@@ -516,6 +583,9 @@ export type ShaderLayerConfig = LayerBase & {
 export type LyricsLayerConfig = LayerBase & {
   kind: 'lyrics';
   lrcContent: string;
+  /** Global sync correction: positive values delay lyrics; >1 stretches/slows time. */
+  timingOffsetSec?: Param<number>;
+  timingScale?: Param<number>;
   fontFamily: string;
   fontSize: Param<number>;
   fontWeight: 'normal' | 'bold';
@@ -534,6 +604,18 @@ export type LyricsLayerConfig = LayerBase & {
   strokeWidth: Param<number>;
 };
 
+export type SpectrogramColorScheme = 'heat' | 'cool' | 'rainbow' | 'mono';
+
+export type SpectrogramLayerConfig = LayerBase & {
+  kind: 'spectrogram';
+  colorScheme: SpectrogramColorScheme;
+  gain: Param<number>;
+  logScale: boolean;
+  beatMarker: boolean;
+  heightFraction: Param<number>;
+  positionY: Param<number>;
+};
+
 export type LayerAny =
   | BackgroundLayerConfig
   | LogoLayerConfig
@@ -546,10 +628,10 @@ export type LayerAny =
   | HDCircularSpectrumLayerConfig
   | ParticleFieldLayerConfig
   | OscilloscopeLayerConfig
-  | EnergyRibbonLayerConfig
   | DotSphereEqualizerLayerConfig
   | TextLayerConfig
-  | LyricsLayerConfig;
+  | LyricsLayerConfig
+  | SpectrogramLayerConfig;
 
 // --- Project ---
 

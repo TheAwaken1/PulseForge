@@ -3,9 +3,12 @@
  * Used by both real-time preview and offline export rendering.
  */
 export type AudioFrame = {
-  t: number;          // current time in seconds
+  t: number;           // current time in seconds
   bins: Float32Array;  // log-frequency bins, length K (default 72), values 0..1
   rms: number;         // root mean square energy, 0..1
+  beat: boolean;       // true on the frame a beat onset is detected
+  beatPhase: number;   // 0→1 sawtooth, resets to 0 on each beat, reaches 1 at next expected beat
+  bpm: number;         // estimated tempo in beats per minute
 };
 
 /**
@@ -33,6 +36,9 @@ export type OfflineAnalysisResult = {
   // Flattened: bins[frame * binCount + bin]
   bins: Float32Array;
   rms: Float32Array;
+  beats: Uint8Array;        // 1 = beat detected on that frame, 0 otherwise
+  beatPhase: Float32Array;  // 0→1 beat phase per frame
+  bpm: Float32Array;        // estimated BPM per frame
 };
 
 export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
@@ -52,5 +58,8 @@ export function emptyAudioFrame(binCount: number = 72): AudioFrame {
     t: 0,
     bins: new Float32Array(binCount),
     rms: 0,
+    beat: false,
+    beatPhase: 0,
+    bpm: 120,
   };
 }

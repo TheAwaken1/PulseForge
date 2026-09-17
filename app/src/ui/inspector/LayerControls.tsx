@@ -12,9 +12,9 @@ import { ParticleFieldControls } from './controls/ParticleFieldControls';
 import { OscilloscopeControls } from './controls/OscilloscopeControls';
 import { TextControls } from './controls/TextControls';
 import { ShaderControls } from './controls/ShaderControls';
-import { EnergyRibbonControls } from './controls/EnergyRibbonControls';
 import { DotSphereEqualizerControls } from './controls/DotSphereEqualizerControls';
 import { LyricsControls } from './controls/LyricsControls';
+import { SpectrogramControls } from './controls/SpectrogramControls';
 
 interface Props {
   layer: LayerAny;
@@ -30,7 +30,7 @@ export const LayerControls: React.FC<Props> = (props) => {
 
   switch (layer.kind) {
     case 'background':
-      return <BackgroundControls layer={layer} imageAssets={imageAssets} handleAssignAsset={handleAssignAsset} handleDirectChange={handleDirectChange} />;
+      return <BackgroundControls layer={layer} imageAssets={imageAssets} handleAssignAsset={handleAssignAsset} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
     case 'logo':
       return <LogoControls layer={layer} imageAssets={imageAssets} handleAssignAsset={handleAssignAsset} updateLayer={updateLayer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
     case 'radialSpectrum':
@@ -49,8 +49,6 @@ export const LayerControls: React.FC<Props> = (props) => {
       return <ParticleFieldControls layer={layer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
     case 'oscilloscope':
       return <OscilloscopeControls layer={layer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
-    case 'energyRibbon':
-      return <EnergyRibbonControls layer={layer} handleParamChange={handleParamChange} />;
     case 'dotSphereEqualizer':
       return <DotSphereEqualizerControls layer={layer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
     case 'text':
@@ -59,6 +57,8 @@ export const LayerControls: React.FC<Props> = (props) => {
       return <LyricsControls layer={layer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
     case 'shader':
       return <ShaderControls layer={layer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
+    case 'spectrogram':
+      return <SpectrogramControls layer={layer} handleParamChange={handleParamChange} handleDirectChange={handleDirectChange} />;
     default:
       return null;
   }

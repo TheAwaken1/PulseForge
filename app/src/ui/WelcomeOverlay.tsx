@@ -1,363 +1,412 @@
 import React, { useRef, useState } from 'react';
-import { ALL_PRESETS, type PresetTemplate } from '../presets/templates';
+import { ALL_PRESETS } from '../presets/templates';
 import { PresetManager } from '../presets/PresetManager';
-import { importAudioFile } from '../utils/audioImport';
-import { extractPresetColors } from './PresetGallery';
+import { importAudioFile, importVisualFile } from '../utils/audioImport';
+import { useProjectStore } from '../state/projectStore';
+import { useSelectionStore } from '../state/selectionStore';
+import { useTransportStore } from '../state/transportStore';
+import {
+  createLayerId,
+  createEffectId,
+  createDefaultProject,
+  defaultTransform,
+  staticParam,
+  type BackgroundLayerConfig,
+  type ColorGradeEffectConfig,
+  type LogoLayerConfig,
+  type ShakeEffectConfig,
+} from '../types/project';
+import { PresetArtwork } from './PresetArtwork';
+import {
+  createLogoMatchedPulse,
+  createLogoMatchedShake,
+  createLogoSpectrumLayer,
+} from '../layers/logoSpectrumDefaults';
 
-type Step = 'choose' | 'audio' | 'presets';
+type Step = 'home' | 'background' | 'logo' | 'audio' | 'ready' | 'presets';
+type AssetRole = 'background' | 'logo';
 
 interface Props {
   visible: boolean;
   onDismiss: () => void;
 }
 
+const FLOW_STEPS: Array<{ key: Step; label: string }> = [
+  { key: 'background', label: 'Background' },
+  { key: 'logo', label: 'Logo' },
+  { key: 'audio', label: 'Audio' },
+];
+
 export const WelcomeOverlay: React.FC<Props> = ({ visible, onDismiss }) => {
-  const [step, setStep] = useState<Step>('choose');
-  const [dragActive, setDragActive] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<Step>('home');
+  const [dragRole, setDragRole] = useState<AssetRole | 'audio' | null>(null);
+  const [backgroundPreview, setBackgroundPreview] = useState('');
+  const [logoPreview, setLogoPreview] = useState('');
+  const [audioName, setAudioName] = useState('');
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const quickAudioInputRef = useRef<HTMLInputElement>(null);
 
   if (!visible) return null;
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(true);
+  const resetFlow = () => {
+    setStep('home');
+    setDragRole(null);
+    setBackgroundPreview('');
+    setLogoPreview('');
+    setAudioName('');
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
+  const beginBrandFlow = () => {
+    const store = useProjectStore.getState();
+    if (
+      (store.project.layers.length > 0 || store.project.assets.length > 0) &&
+      !confirm('Quick Create starts a new visualizer. Replace the current canvas?')
+    ) return;
+
+    const transport = useTransportStore.getState();
+    transport.pause();
+    transport.seek(0);
+    transport.setDuration(0);
+    store.setProject(createDefaultProject());
+    useSelectionStore.getState().clearSelection();
+    resetFlow();
+    setStep('background');
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    const files = Array.from(e.dataTransfer.files);
-    for (const file of files) {
-      if (file.type.startsWith('audio/')) {
-        await importAudioFile(file);
-        onDismiss();
-        return;
-      }
+  const assignImage = (role: AssetRole, file: File) => {
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) return;
+    const asset = importVisualFile(file);
+    const store = useProjectStore.getState();
+    const layers = store.project.layers.filter((layer) => (
+      layer.kind !== role && (role !== 'logo' || layer.name !== 'Logo Spectrum Halo')
+    ));
+    const roleLayer = role === 'background'
+      ? createBackgroundLayer(asset.id)
+      : createLogoLayer(asset.id);
+    const nextLayers = role === 'background'
+      ? [roleLayer, ...layers]
+      : [...layers, createLogoSpectrumLayer(), roleLayer];
+    store.updateProjectField('layers', nextLayers);
+    useSelectionStore.getState().selectLayer(roleLayer.id);
+
+    if (role === 'background') {
+      setBackgroundPreview(asset.relPath);
+      setStep('logo');
+    } else {
+      setLogoPreview(asset.relPath);
+      setStep('audio');
     }
   };
 
-  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const assignAudio = async (file: File, quick = false) => {
+    if (!file.type.startsWith('audio/')) return;
     await importAudioFile(file);
-    e.target.value = '';
-    onDismiss();
+    setAudioName(file.name);
+    if (quick) onDismiss();
+    else setStep('ready');
   };
 
-  const handlePreset = (presetId: string) => {
+  const choosePreset = (presetId: string) => {
     PresetManager.applyExclusive(presetId);
     onDismiss();
   };
 
+  const dropHandlers = (role: AssetRole | 'audio') => ({
+    onDragOver: (event: React.DragEvent) => {
+      event.preventDefault();
+      setDragRole(role);
+    },
+    onDragLeave: (event: React.DragEvent) => {
+      event.preventDefault();
+      setDragRole(null);
+    },
+    onDrop: (event: React.DragEvent) => {
+      event.preventDefault();
+      setDragRole(null);
+      const file = event.dataTransfer.files[0];
+      if (!file) return;
+      if (role === 'audio') void assignAudio(file);
+      else assignImage(role, file);
+    },
+  });
+
+  const flowIndex = FLOW_STEPS.findIndex((item) => item.key === step);
+
   return (
-    <div style={styles.overlay}>
-      {step === 'choose' && (
-        <div style={styles.card}>
-          <div style={styles.logoWrap}>
-            <div style={styles.logoIcon}>P</div>
-            <span style={styles.logoText}>PulseForge</span>
-          </div>
-          <h2 style={styles.heading}>How do you want to start?</h2>
-          <p style={styles.subtitle}>Choose your starting point</p>
+    <div className="welcome-shell">
+      <div className="welcome-ambient welcome-ambient-one" />
+      <div className="welcome-ambient welcome-ambient-two" />
 
-          <div style={styles.choiceRow}>
-            <button
-              style={styles.choiceCard}
-              className="welcome-choice-card"
-              onClick={() => setStep('audio')}
-            >
-              <div style={styles.choiceIcon}>♫</div>
-              <div style={styles.choiceTitle}>Load Audio</div>
-              <div style={styles.choiceDesc}>Import an audio file and build a custom visualization</div>
-            </button>
-
-            <button
-              style={styles.choiceCard}
-              className="welcome-choice-card"
-              onClick={() => setStep('presets')}
-            >
-              <div style={styles.choiceIcon}>⬛</div>
-              <div style={styles.choiceTitle}>Browse Presets</div>
-              <div style={styles.choiceDesc}>Start from a ready-made visual template</div>
-            </button>
-          </div>
-
-          <div style={styles.footer}>
-            <span style={styles.footerText}>
-              Space to play &middot; Ctrl+Z to undo &middot; Ctrl+S to save
-            </span>
-          </div>
-        </div>
-      )}
-
-      {step === 'audio' && (
-        <div style={styles.card}>
-          <button style={styles.backBtn} onClick={() => setStep('choose')}>
-            ← Back
-          </button>
-          <div style={styles.logoWrap}>
-            <div style={styles.logoIcon}>♫</div>
-            <span style={styles.logoText}>Load Audio</span>
-          </div>
-          <h2 style={styles.heading}>Drop your audio file</h2>
-          <p style={styles.subtitle}>MP3, WAV, OGG, FLAC supported</p>
-
-          <div
-            className={`welcome-dropzone${dragActive ? ' drag-active' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div style={styles.dropIcon}>&#9835;</div>
-            <div style={styles.dropText}>
-              {dragActive ? 'Drop your audio file' : 'Drag & drop audio file here'}
+      {step === 'home' ? (
+        <div className="welcome-home">
+          <header className="welcome-brand welcome-brand-hero">
+            <div className="welcome-brand-mark">P</div>
+            <div>
+              <strong>PulseForge</strong>
+              <span>Audio-reactive visuals. Unmistakably yours.</span>
             </div>
-            <div style={styles.dropHint}>or click to browse</div>
-            <div style={styles.dropFormats}>MP3 &middot; WAV &middot; OGG &middot; FLAC</div>
+          </header>
+
+          <div className="welcome-hero-copy">
+            <span className="welcome-eyebrow">NEW CREATIVE WORKFLOW</span>
+            <h1>Turn your brand into<br /><em>something that moves.</em></h1>
+            <p>Add your artwork, logo and track. PulseForge builds the visualizer around you.</p>
           </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/*"
-            style={{ display: 'none' }}
-            onChange={handleFileInput}
-          />
-
-          <div style={styles.footer}>
-            <span style={styles.footerText}>You can add more audio later from the toolbar</span>
-          </div>
-        </div>
-      )}
-
-      {step === 'presets' && (
-        <div style={{ ...styles.card, maxWidth: 700 }}>
-          <button style={styles.backBtn} onClick={() => setStep('choose')}>
-            ← Back
+          <button className="welcome-feature-card" onClick={beginBrandFlow}>
+            <div className="welcome-feature-art">
+              <div className="welcome-demo-ring welcome-demo-ring-one" />
+              <div className="welcome-demo-ring welcome-demo-ring-two" />
+              <div className="welcome-demo-logo">YOUR<br />LOGO</div>
+              <div className="welcome-demo-bars">
+                {Array.from({ length: 24 }, (_, index) => <span key={index} style={{ height: `${18 + ((index * 23) % 72)}%` }} />)}
+              </div>
+            </div>
+            <div className="welcome-feature-copy">
+              <span className="welcome-feature-badge">GUIDED · 3 STEPS</span>
+              <h2>Brand Visualizer</h2>
+              <p>Add your background, logo, and track. We’ll handle placement and reactive polish.</p>
+              <span className="welcome-feature-cta">Start creating <b>→</b></span>
+            </div>
           </button>
-          <div style={styles.logoWrap}>
-            <div style={styles.logoIcon}>P</div>
-            <span style={styles.logoText}>Choose a Preset</span>
-          </div>
-          <h2 style={styles.heading}>Pick a visual template</h2>
-          <p style={styles.subtitle}>You can customize everything after selecting</p>
 
-          <div style={styles.presetsGrid}>
-            {ALL_PRESETS.map((preset) => (
-              <PresetMiniCard
-                key={preset.id}
-                preset={preset}
-                onClick={() => handlePreset(preset.id)}
-              />
-            ))}
+          <div className="welcome-secondary-actions">
+            <button onClick={() => quickAudioInputRef.current?.click()}>
+              <span className="welcome-action-number">01</span>
+              <span><b>Load audio</b><small>Start with an empty canvas</small></span>
+            </button>
+            <button onClick={() => setStep('presets')}>
+              <span className="welcome-action-number">02</span>
+              <span><b>Explore presets</b><small>Pick a ready-made motion style</small></span>
+            </button>
+            <button onClick={onDismiss}>
+              <span className="welcome-action-number">03</span>
+              <span><b>Advanced editor</b><small>Build freely with layers</small></span>
+            </button>
+          </div>
+          <input ref={quickAudioInputRef} type="file" accept="audio/*" hidden onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void assignAudio(file, true);
+            event.target.value = '';
+          }} />
+        </div>
+      ) : step === 'presets' ? (
+        <PresetBrowser onBack={() => setStep('home')} onChoose={choosePreset} />
+      ) : (
+        <div className="guided-shell">
+          <header className="guided-header">
+            <button className="guided-back" onClick={step === 'background' ? resetFlow : () => setStep(previousStep(step))}>←</button>
+            <div className="welcome-brand guided-brand">
+              <div className="welcome-brand-mark">P</div>
+              <div><strong>Brand Visualizer</strong><span>Quick Create</span></div>
+            </div>
+            <button className="guided-exit" onClick={onDismiss}>Advanced editor</button>
+          </header>
+
+          <div className="guided-progress">
+            {FLOW_STEPS.map((item, index) => {
+              const completed = step === 'ready' || index < flowIndex;
+              const active = item.key === step;
+              return (
+                <React.Fragment key={item.key}>
+                  {index > 0 && <span className={`guided-progress-line${completed || active ? ' is-active' : ''}`} />}
+                  <div className={`guided-progress-step${completed ? ' is-complete' : ''}${active ? ' is-active' : ''}`}>
+                    <i>{completed ? '✓' : index + 1}</i><span>{item.label}</span>
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
 
-          <div style={styles.footer}>
-            <span style={styles.footerText}>Load audio anytime from the toolbar after selecting a preset</span>
-          </div>
+          <main className="guided-main">
+            <div className="guided-preview">
+              <div className="guided-preview-stage" style={backgroundPreview ? { backgroundImage: `linear-gradient(rgba(5, 5, 12, .16), rgba(5, 5, 12, .42)), url(${backgroundPreview})` } : undefined}>
+                <div className="guided-preview-glow" />
+                <div className="guided-preview-ring guided-preview-ring-one" />
+                <div className="guided-preview-ring guided-preview-ring-two" />
+                {logoPreview ? <img src={logoPreview} alt="Logo preview" className="guided-preview-logo" /> : <div className="guided-preview-placeholder">PF</div>}
+                <div className="guided-preview-bars">
+                  {Array.from({ length: 34 }, (_, index) => <span key={index} style={{ height: `${14 + ((index * 29) % 78)}%` }} />)}
+                </div>
+                <span className="guided-live-pill"><i /> LIVE PREVIEW</span>
+              </div>
+            </div>
+
+            <section className="guided-content">
+              {step === 'background' && (
+                <UploadStep
+                  eyebrow="STEP 1 · SET THE SCENE"
+                  title="Add your background"
+                  body="Choose artwork that establishes the mood. A 16:9 image at 1920×1080 or larger works best."
+                  accept="image/*,video/*"
+                  active={dragRole === 'background'}
+                  inputRef={backgroundInputRef}
+                  dropHandlers={dropHandlers('background')}
+                  onFile={(file) => assignImage('background', file)}
+                  button="Choose background"
+                  hint="JPG, PNG, GIF or short video · 16:9 recommended"
+                />
+              )}
+              {step === 'logo' && (
+                <UploadStep
+                  eyebrow="STEP 2 · MAKE IT YOURS"
+                  title="Now add your logo"
+                  body="We’ll center and size it automatically. Transparent PNG, GIF or a short video all work."
+                  accept="image/*,video/*"
+                  active={dragRole === 'logo'}
+                  inputRef={logoInputRef}
+                  dropHandlers={dropHandlers('logo')}
+                  onFile={(file) => assignImage('logo', file)}
+                  button="Choose logo"
+                  hint="PNG, GIF, WEBP or short video"
+                />
+              )}
+              {step === 'audio' && (
+                <UploadStep
+                  eyebrow="STEP 3 · ADD THE PULSE"
+                  title="Choose your soundtrack"
+                  body="Your visualizer will react to the rhythm and energy of this track in real time."
+                  accept="audio/*"
+                  active={dragRole === 'audio'}
+                  inputRef={audioInputRef}
+                  dropHandlers={dropHandlers('audio')}
+                  onFile={(file) => void assignAudio(file)}
+                  button="Choose audio"
+                  hint="MP3, WAV, OGG or FLAC"
+                />
+              )}
+              {step === 'ready' && (
+                <div className="guided-step-copy guided-ready">
+                  <span className="guided-ready-check">✓</span>
+                  <span className="welcome-eyebrow">YOUR VISUALIZER IS READY</span>
+                  <h2>That already looks like you.</h2>
+                  <p>{audioName} is ready with your branded background and logo. Fine-tune anything in the editor or press play and enjoy it.</p>
+                  <button className="guided-primary" onClick={onDismiss}>Open my visualizer <b>→</b></button>
+                  <button className="guided-text-button" onClick={() => setStep('audio')}>Change audio</button>
+                </div>
+              )}
+            </section>
+          </main>
         </div>
       )}
     </div>
   );
 };
 
-const PresetMiniCard: React.FC<{
-  preset: PresetTemplate;
-  onClick: () => void;
-}> = ({ preset, onClick }) => {
-  const colors = extractPresetColors(preset);
+interface UploadStepProps {
+  eyebrow: string;
+  title: string;
+  body: string;
+  accept: string;
+  active: boolean;
+  inputRef: React.RefObject<HTMLInputElement>;
+  dropHandlers: Pick<React.HTMLAttributes<HTMLDivElement>, 'onDragOver' | 'onDragLeave' | 'onDrop'>;
+  onFile: (file: File) => void;
+  button: string;
+  hint: string;
+}
 
-  return (
-    <div className="preset-card" style={styles.miniCard} onClick={onClick}>
-      <div style={styles.miniColorBar}>
-        {colors.map((c, i) => (
-          <div key={i} style={{ flex: 1, background: c, height: '100%' }} />
-        ))}
-      </div>
-      <div style={styles.miniBody}>
-        <div style={styles.miniName}>{preset.name}</div>
-      </div>
+const UploadStep: React.FC<UploadStepProps> = ({ eyebrow, title, body, accept, active, inputRef, dropHandlers, onFile, button, hint }) => (
+  <div className="guided-step-copy">
+    <span className="welcome-eyebrow">{eyebrow}</span>
+    <h2>{title}</h2>
+    <p>{body}</p>
+    <div className={`guided-dropzone${active ? ' is-active' : ''}`} {...dropHandlers} onClick={() => inputRef.current?.click()}>
+      <span className="guided-upload-icon">↑</span>
+      <strong>Drop your file here</strong>
+      <small>or click anywhere to browse</small>
+      <button type="button" className="guided-primary">{button}</button>
+      <em>{hint}</em>
     </div>
-  );
-};
+    <input ref={inputRef} type="file" accept={accept} hidden onChange={(event) => {
+      const file = event.target.files?.[0];
+      if (file) onFile(file);
+      event.target.value = '';
+    }} />
+  </div>
+);
 
-const styles: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.82)',
-    backdropFilter: 'blur(10px)',
-    zIndex: 100,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  card: {
-    background: 'var(--bg-primary)',
-    border: '1px solid var(--border-light)',
-    borderRadius: 18,
-    padding: '36px 40px',
-    width: '92%',
-    maxWidth: 560,
-    maxHeight: '92vh',
-    overflow: 'auto',
-    boxShadow: '0 28px 90px rgba(0,0,0,0.7)',
-    textAlign: 'center',
-    position: 'relative',
-  },
-  backBtn: {
-    position: 'absolute',
-    top: 16,
-    left: 18,
-    background: 'none',
-    border: 'none',
-    color: 'var(--text-secondary)',
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: 6,
-    letterSpacing: 0.3,
-  },
-  logoWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginBottom: 18,
-  },
-  logoIcon: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    background: 'linear-gradient(135deg, var(--accent), #a29bfe)',
-    color: '#fff',
-    fontWeight: 700,
-    fontSize: 18,
-  },
-  logoText: {
-    fontWeight: 700,
-    fontSize: 20,
-    color: 'var(--text-primary)',
-    letterSpacing: 0.5,
-  },
-  heading: {
-    fontSize: 22,
-    fontWeight: 700,
-    color: 'var(--text-primary)',
-    margin: '0 0 6px',
-  },
-  subtitle: {
-    fontSize: 13,
-    color: 'var(--text-muted)',
-    margin: '0 0 28px',
-  },
-  choiceRow: {
-    display: 'flex',
-    gap: 16,
-    marginBottom: 24,
-  },
-  choiceCard: {
-    flex: 1,
-    background: 'var(--bg-secondary)',
-    border: '1px solid var(--border-light)',
-    borderRadius: 14,
-    padding: '28px 20px',
-    cursor: 'pointer',
-    textAlign: 'center',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 10,
-    transition: 'all 0.15s ease',
-  },
-  choiceIcon: {
-    fontSize: 36,
-    lineHeight: 1,
-    marginBottom: 4,
-  },
-  choiceTitle: {
-    fontSize: 15,
-    fontWeight: 700,
-    color: 'var(--text-primary)',
-  },
-  choiceDesc: {
-    fontSize: 12,
-    color: 'var(--text-muted)',
-    lineHeight: 1.5,
-  },
-  dropIcon: {
-    fontSize: 36,
-    color: 'var(--accent-bright)',
-    marginBottom: 10,
-  },
-  dropText: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-    marginBottom: 4,
-  },
-  dropHint: {
-    fontSize: 12,
-    color: 'var(--text-muted)',
-    marginBottom: 8,
-  },
-  dropFormats: {
-    fontSize: 10,
-    color: 'var(--text-dim)',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  presetsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-    gap: 10,
-    marginBottom: 20,
-    textAlign: 'left',
-  },
-  miniCard: {
-    borderRadius: 'var(--radius)',
-    overflow: 'hidden',
-    cursor: 'pointer',
-    border: '1px solid var(--border)',
-    background: 'var(--bg-secondary)',
-    transition: 'all 0.15s ease',
-  },
-  miniColorBar: {
-    display: 'flex',
-    height: 5,
-    width: '100%',
-  },
-  miniBody: {
-    padding: '8px 10px',
-  },
-  miniName: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  footer: {
-    paddingTop: 10,
-    borderTop: '1px solid var(--border)',
-  },
-  footerText: {
-    fontSize: 10,
-    color: 'var(--text-dim)',
-    letterSpacing: 0.3,
-  },
-};
+const PresetBrowser: React.FC<{ onBack: () => void; onChoose: (presetId: string) => void }> = ({ onBack, onChoose }) => (
+  <div className="preset-browser">
+    <header>
+      <button className="guided-back" onClick={onBack}>←</button>
+      <div><span className="welcome-eyebrow">MOTION COLLECTION</span><h2>Choose a visual world</h2><p>Every preset is a starting point. You can customize all of it.</p></div>
+    </header>
+    <div className="preset-browser-grid">
+      {ALL_PRESETS.map((preset) => (
+        <button key={preset.id} onClick={() => onChoose(preset.id)}>
+          <PresetArtwork preset={preset} />
+          <span><b>{preset.name}</b><small>{preset.description}</small></span>
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+function previousStep(step: Step): Step {
+  if (step === 'logo') return 'background';
+  if (step === 'audio') return 'logo';
+  if (step === 'ready') return 'audio';
+  return 'home';
+}
+
+function createBackgroundLayer(assetId: string): BackgroundLayerConfig {
+  return {
+    id: createLayerId(), name: 'Background', kind: 'background', enabled: true,
+    opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(),
+    effects: [createBrandShakeEffect(5, 0.004, 8, 1.8)],
+    assetId, fit: 'stretch', darkness: staticParam(0),
+  };
+}
+
+function createLogoLayer(assetId: string): LogoLayerConfig {
+  return {
+    id: createLayerId(), name: 'Logo', kind: 'logo', enabled: true,
+    opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(),
+    effects: [
+      createBrandColorGradeEffect(),
+      createLogoMatchedShake(),
+      createLogoMatchedPulse(),
+    ],
+    assetId, anchor: 'center', frameShape: 'circle', cornerRadius: staticParam(30),
+    fitMode: 'cover', autoFitOnImport: true, frameSize: staticParam(375), padding: staticParam(8),
+    border: { enabled: true, width: staticParam(20), color: staticParam('#8b7cff'), glow: true },
+    _refitSeq: 0,
+  };
+}
+
+function createBrandShakeEffect(
+  amountPx: number,
+  amountRot: number,
+  speed: number,
+  audioAmount: number,
+): ShakeEffectConfig {
+  return {
+    id: createEffectId(),
+    name: 'Shake',
+    kind: 'shake',
+    enabled: true,
+    amountPx: staticParam(amountPx),
+    amountRot: staticParam(amountRot),
+    speed: staticParam(speed),
+    audioDriven: true,
+    audioAmount: staticParam(audioAmount),
+  };
+}
+
+function createBrandColorGradeEffect(): ColorGradeEffectConfig {
+  return {
+    id: createEffectId(),
+    name: 'Color Grade',
+    kind: 'colorGrade',
+    enabled: true,
+    hue: staticParam(0),
+    saturation: staticParam(0.15),
+    contrast: staticParam(0.58),
+    brightness: staticParam(1.04),
+    audioDriven: false,
+    audioAmount: staticParam(90),
+  };
+}

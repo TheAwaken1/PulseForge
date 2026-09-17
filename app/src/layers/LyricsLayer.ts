@@ -100,9 +100,12 @@ export class LyricsLayerRuntime implements RuntimeLayer<LyricsLayerConfig> {
     const strokeEnabled = sampleParam(cfg.strokeEnabled, t);
     const strokeColor = sampleParam(cfg.strokeColor, t);
     const strokeWidth = clamp(sampleParam(cfg.strokeWidth, t), 0, 10);
+    const timingOffsetSec = cfg.timingOffsetSec ? sampleParam(cfg.timingOffsetSec, t) : 0;
+    const timingScale = clamp(cfg.timingScale ? sampleParam(cfg.timingScale, t) : 1, 0.25, 4);
+    const lyricTime = Math.max(0, (t - timingOffsetSec) / timingScale);
 
     const lines = this.parsedLines;
-    const lineIdx = findLineIndex(lines, t);
+    const lineIdx = findLineIndex(lines, lyricTime);
 
     // Detect line change
     if (lineIdx !== this.lastLineIdx) {

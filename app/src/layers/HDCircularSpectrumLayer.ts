@@ -10,6 +10,7 @@ import {
   DESIGN_WIDTH, DESIGN_HEIGHT,
 } from './layerUtils';
 import { HDAudioBase } from './HDAudioBase';
+import { liquidMagnitude } from './liquidMotion';
 
 const RING_SEGMENTS = 64;
 const TWO_PI = Math.PI * 2;
@@ -100,6 +101,10 @@ export class HDCircularSpectrumLayerRuntime extends HDAudioBase implements Runti
     const gamma = clamp(sampleParam(this.config.gamma, t), 0.4, 1.8);
     const contrast = clamp(sampleParam(this.config.contrast, t), 0.6, 2.5);
     const rotationSpeed = sampleParam(this.config.rotationSpeed, t);
+    const liquidAmount = this.config.liquidMotion
+      ? (this.config.liquidAmount ? sampleParam(this.config.liquidAmount, t) : 0.65)
+      : 0;
+    const liquidSpeed = this.config.liquidSpeed ? sampleParam(this.config.liquidSpeed, t) : 1;
 
     const frameFactor = timeFactor60fps(t, this.lastT);
     const dt = this.lastT > 0 ? t - this.lastT : 1 / 60;
@@ -129,8 +134,12 @@ export class HDCircularSpectrumLayerRuntime extends HDAudioBase implements Runti
     const cy = ctx.height * 0.5;
 
     // --- Audio processing ---
+    this.updateBeatKick(audio.beat, frameFactor);
     const stats = bandStatsAudio(audio.bins);
-    const bandBoost = clamp(0.95 + stats.bass * 0.25 + stats.mid * 0.18 + stats.treble * 0.1, 0.9, 1.5);
+    const bandBoost = clamp(
+      0.95 + stats.bass * 0.25 + stats.mid * 0.18 + stats.treble * 0.1 + this.beatKick * 0.45,
+      0.9, 2.0,
+    );
 
     this.processAudio(audio, {
       barCount, gain, compressionPow, attackAdj, releaseAdj,
@@ -147,7 +156,9 @@ export class HDCircularSpectrumLayerRuntime extends HDAudioBase implements Runti
     let maxOuterR = innerRadius;
 
     for (let i = 0; i < barCount; i++) {
-      const shaped = this.shaped[i];
+      const shaped = liquidAmount > 0
+        ? liquidMagnitude(this.shaped, i, t, audio, liquidAmount, liquidSpeed).magnitude
+        : this.shaped[i];
 
       const barHeight = shaped * barMaxHeight;
       if (barHeight <= 0.5) continue;

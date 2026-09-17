@@ -74,6 +74,7 @@ export class DotSphereEqualizerLayerRuntime implements RuntimeLayer<DotSphereEqu
   private peaks = new Float32Array(MAX_COLUMNS);
 
   private lastT = -1;
+  private beatFlash = 0;
   private lastW = 0;
   private lastH = 0;
 
@@ -143,8 +144,15 @@ export class DotSphereEqualizerLayerRuntime implements RuntimeLayer<DotSphereEqu
     const aRate = normalizeRate(attack, frameFactor);
     const rRate = normalizeRate(release, frameFactor);
 
+    // Beat flash: boost dot height on each beat
+    if (audio.beat) {
+      this.beatFlash = 1.0;
+    } else {
+      this.beatFlash *= Math.pow(0.65, frameFactor);
+    }
+
     // Resample audio bins to column count — gain drives amplification directly
-    mapBins(audio.bins, this.mapped, columns, gain);
+    mapBins(audio.bins, this.mapped, columns, gain * (1 + this.beatFlash * 0.3));
 
     // Asymmetric smoothing + peak hold (no compression — full dynamic range)
     for (let i = 0; i < columns; i++) {

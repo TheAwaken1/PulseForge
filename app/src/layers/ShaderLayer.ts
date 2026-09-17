@@ -27,6 +27,14 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
   private uniforms: any = null;
   private lastW = 0;
   private lastH = 0;
+  private lastT = -1;
+  private beatFlash = 0;
+
+  // Spectrum texture (72×1 canvas updated each frame with audio.bins)
+  private spectrumCanvas: HTMLCanvasElement | null = null;
+  private spectrumCtx: CanvasRenderingContext2D | null = null;
+  private spectrumImageData: ImageData | null = null;
+  private spectrumTexture: PIXI.Texture | null = null;
 
   // Feedback state
   private rtA: PIXI.RenderTexture | null = null;
@@ -68,6 +76,8 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
       this.destroySceneCapture();
       this.destroyFilter();
       this.buildFilter();
+      this.beatFlash = 0;
+      this.lastT = -1;
       if (config.shaderType === 'displacement' && this.lastW > 0 && this.lastH > 0) {
         this.initSceneCapture(this.lastW, this.lastH);
       }
@@ -94,6 +104,18 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
     }
 
     if (!this.uniforms) return;
+
+    // Update per-frame spectrum texture
+    this.updateSpectrumTexture(audio.bins);
+
+    // Beat flash: snap to 1.0 on beat, decay to 0 over ~200ms
+    const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    this.lastT = t;
+    if (audio.beat) {
+      this.beatFlash = 1.0;
+    } else {
+      this.beatFlash *= Math.pow(0.65, dt * 60);
+    }
 
     const u = this.uniforms;
     const cfg = this.config;
@@ -136,6 +158,11 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
     hexToVec3(sampleParam(cfg.color1, t), u.uColor1);
     hexToVec3(sampleParam(cfg.color2, t), u.uColor2);
     hexToVec3(sampleParam(cfg.color3, t), u.uColor3);
+
+    // Beat uniforms
+    u.uBeat = this.beatFlash;
+    u.uBeatPhase = audio.beatPhase;
+    u.uBpm = audio.bpm;
 
     // Feedback uniforms
     u.uFeedbackEnabled = cfg.feedbackEnabled ? 1.0 : 0.0;
@@ -276,8 +303,38 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
 
   /* ---- filter management ---- */
 
+  private buildSpectrumTexture(): void {
+    this.spectrumCanvas = document.createElement('canvas');
+    this.spectrumCanvas.width = 72;
+    this.spectrumCanvas.height = 1;
+    this.spectrumCtx = this.spectrumCanvas.getContext('2d')!;
+    this.spectrumImageData = this.spectrumCtx.createImageData(72, 1);
+    // Pre-fill alpha to 255
+    const data = this.spectrumImageData.data;
+    for (let i = 3; i < data.length; i += 4) data[i] = 255;
+    this.spectrumTexture = PIXI.Texture.from(this.spectrumCanvas);
+  }
+
+  private updateSpectrumTexture(bins: Float32Array): void {
+    if (!this.spectrumCtx || !this.spectrumImageData || !this.spectrumTexture) return;
+    const data = this.spectrumImageData.data;
+    for (let i = 0; i < 72; i++) {
+      const v = Math.round(Math.min(1, bins[i] || 0) * 255);
+      const p = i * 4;
+      data[p] = v;
+      data[p + 1] = v;
+      data[p + 2] = v;
+      // alpha already set to 255
+    }
+    this.spectrumCtx.putImageData(this.spectrumImageData, 0, 0);
+    this.spectrumTexture.source.update();
+  }
+
   private buildFilter(): void {
     try {
+      // Create spectrum texture before building resources
+      this.buildSpectrumTexture();
+
       const fragmentSrc = getFragmentSource(this.config.shaderType);
 
       const glProgram = PIXI.GlProgram.from({
@@ -309,6 +366,9 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
         uDistortionStrength: { value: 1, type: 'f32' },
         uFlowSpeed: { value: 1, type: 'f32' },
         uViscosity: { value: 0.72, type: 'f32' },
+        uBeat: { value: 0, type: 'f32' },
+        uBeatPhase: { value: 0, type: 'f32' },
+        uBpm: { value: 120, type: 'f32' },
       });
 
       // Create a 1x1 white texture as placeholder for uPrevTex
@@ -320,6 +380,7 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
           shaderUniforms: uniformGroup,
           uPrevTex: placeholderTex.source,
           uSceneTex: placeholderTex.source,
+          uSpectrum: (this.spectrumTexture ?? placeholderTex).source,
         },
       });
 
@@ -339,6 +400,13 @@ export class ShaderLayerRuntime implements RuntimeLayer<ShaderLayerConfig> {
       // enough for GC and avoids invalidating live preview shaders.
       this.filter = null;
       this.uniforms = null;
+    }
+    if (this.spectrumTexture) {
+      this.spectrumTexture.destroy(true);
+      this.spectrumTexture = null;
+      this.spectrumCanvas = null;
+      this.spectrumCtx = null;
+      this.spectrumImageData = null;
     }
   }
 

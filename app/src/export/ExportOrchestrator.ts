@@ -95,10 +95,10 @@ export class ExportOrchestrator {
       this.offscreenApp.app.ticker.stop();
       this.auditExportRenderer(renderWidth, renderHeight, project.settings.previewScale);
 
-      // Load image textures into the export renderer
-      const imageAssets = project.assets.filter((a) => a.type === 'image');
-      for (const asset of imageAssets) {
-        this.offscreenApp.resources.registerUrl(asset.id, asset.relPath);
+      // Load visual textures into the export renderer
+      const visualAssets = project.assets.filter((a) => a.type === 'image' || a.type === 'video');
+      for (const asset of visualAssets) {
+        this.offscreenApp.resources.registerUrl(asset.id, asset.relPath, asset.type === 'video' ? 'video' : 'image', Boolean(asset.metadata?.animated));
         try {
           await this.offscreenApp.resources.loadTexture(asset.id);
         } catch (e) {
@@ -189,7 +189,7 @@ export class ExportOrchestrator {
 
       const t = startSec + frame / fps;
       const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
-      this.offscreenApp!.renderFrame(t, audioFrame, project.layers, { present: false });
+      this.offscreenApp!.renderFrame(t, audioFrame, project.layers, { present: false, syncMediaTime: true });
       const expectedBytes = width * height * 4;
       const rgba = this.extractScaledPixels(width, height);
       if (rgba.length !== expectedBytes) {
@@ -292,50 +292,77 @@ export class ExportOrchestrator {
       audioSource.start(0);
     }
 
+    // Chromium throttles requestAnimationFrame in a background tab. Pause the
+    // recorder and audio clock with it so hidden time is not encoded as a held
+    // video frame, then exclude that time from the render clock on resume.
+    const startWall = performance.now();
+    let hiddenStartedAt: number | null = null;
+    let hiddenDurationMs = 0;
+    const handleVisibilityChange = () => {
+      const now = performance.now();
+      if (document.hidden) {
+        if (hiddenStartedAt === null) hiddenStartedAt = now;
+        if (recorder.state === 'recording') recorder.pause();
+        if (audioCtx?.state === 'running') void audioCtx.suspend();
+      } else {
+        if (hiddenStartedAt !== null) {
+          hiddenDurationMs += now - hiddenStartedAt;
+          hiddenStartedAt = null;
+        }
+        if (audioCtx?.state === 'suspended') void audioCtx.resume();
+        if (recorder.state === 'paused') recorder.resume();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    handleVisibilityChange();
+
     // Render frames one at a time per animation frame to keep the browser responsive.
     // The previous while-loop catch-up pattern could block the event loop for many
     // seconds on complex / high-resolution scenes, causing the browser tab to freeze
     // (appearing as a white screen). Rendering at most one frame per rAF tick prevents
-    // that while still maintaining correct wall-clock timing for A/V sync.
+    // that while still maintaining correct active-time timing for A/V sync.
     const duration = project.durationSec;
     const videoTrack = stream.getVideoTracks()[0];
-    const startWall = performance.now();
     let frame = 0;
 
-    await new Promise<void>((resolve) => {
-      const tick = () => {
-        if (this.cancelled) {
-          resolve();
-          return;
-        }
-
-        if (frame >= totalFrames) {
-          resolve();
-          return;
-        }
-
-        const elapsed = (performance.now() - startWall) / 1000;
-        // Only render when it's time for the next frame according to wall clock.
-        // At most one frame per rAF tick — never block the event loop.
-        if (frame <= Math.floor(elapsed * fps)) {
-          const t = Math.min(frame / fps, duration);
-          const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
-          this.offscreenApp!.renderFrame(t, audioFrame, project.layers);
-          captureCtx.drawImage(sourceCanvas, 0, 0, width, height);
-
-          if ('requestFrame' in videoTrack) {
-            (videoTrack as any).requestFrame();
+    try {
+      await new Promise<void>((resolve) => {
+        const tick = () => {
+          if (this.cancelled) {
+            resolve();
+            return;
           }
 
-          frame++;
-          exportStore.updateProgress(frame);
-        }
+          if (frame >= totalFrames) {
+            resolve();
+            return;
+          }
+
+          const elapsed = (performance.now() - startWall - hiddenDurationMs) / 1000;
+          // Only render when it's time for the next frame on the active export clock.
+          // At most one frame per rAF tick — never block the event loop.
+          if (frame <= Math.floor(elapsed * fps)) {
+            const t = Math.min(frame / fps, duration);
+            const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
+            this.offscreenApp!.renderFrame(t, audioFrame, project.layers);
+            captureCtx.drawImage(sourceCanvas, 0, 0, width, height);
+
+            if ('requestFrame' in videoTrack) {
+              (videoTrack as any).requestFrame();
+            }
+
+            frame++;
+            exportStore.updateProgress(frame);
+          }
+
+          requestAnimationFrame(tick);
+        };
 
         requestAnimationFrame(tick);
-      };
-
-      requestAnimationFrame(tick);
-    });
+      });
+    } finally {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     // Stop audio
     if (audioSource) {

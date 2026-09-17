@@ -4,6 +4,7 @@ import type { AudioFrame } from '../types/audio';
 import type { BottomSpectrumLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
 import { DESIGN_HEIGHT, DESIGN_WIDTH, resolvePositionParam, resolveSizeParam } from './layerUtils';
+import { liquidMagnitude } from './liquidMotion';
 
 /**
  * Bottom Spectrum visualizer: traditional equalizer bars at screen bottom.
@@ -14,6 +15,8 @@ export class BottomSpectrumLayerRuntime implements RuntimeLayer<BottomSpectrumLa
   private graphics: PIXI.Graphics;
   private config: BottomSpectrumLayerConfig;
   private smoothedBins: Float32Array;
+  private beatFlash = 0;
+  private lastT = -1;
 
   constructor(config: BottomSpectrumLayerConfig) {
     this.id = config.id;
@@ -33,12 +36,25 @@ export class BottomSpectrumLayerRuntime implements RuntimeLayer<BottomSpectrumLa
   update(ctx: RenderContext, t: number, audio: AudioFrame): void {
     this.graphics.clear();
 
+    // Beat flash: decaying multiplier for height boost on beat
+    const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    this.lastT = t;
+    if (audio.beat) {
+      this.beatFlash = 1.0;
+    } else {
+      this.beatFlash *= Math.pow(0.65, dt * 60);
+    }
+
     const barCount = Math.round(sampleParam(this.config.barCount, t));
     const gain = sampleParam(this.config.gain, t);
     const colorHex = sampleParam(this.config.color, t);
     const color = parseInt(colorHex.replace('#', ''), 16);
     const attack = sampleParam(this.config.smoothing.attack, t);
     const release = sampleParam(this.config.smoothing.release, t);
+    const liquidAmount = this.config.liquidMotion
+      ? (this.config.liquidAmount ? sampleParam(this.config.liquidAmount, t) : 0.65)
+      : 0;
+    const liquidSpeed = this.config.liquidSpeed ? sampleParam(this.config.liquidSpeed, t) : 1;
 
     const areaX = resolvePositionParam(sampleParam(this.config.barX, t), ctx.width, 0, DESIGN_WIDTH);
     const areaY = resolvePositionParam(sampleParam(this.config.barY, t), ctx.height, ctx.height * 0.82, DESIGN_HEIGHT);
@@ -65,10 +81,13 @@ export class BottomSpectrumLayerRuntime implements RuntimeLayer<BottomSpectrumLa
       this.smoothedBins[i] = prev + rate * (current - prev);
     }
 
-    // Draw bars growing upward
+    // Draw bars growing upward (beat flash boosts height by up to 30%)
+    const beatHeightBoost = 1 + this.beatFlash * 0.3;
     for (let i = 0; i < barCount; i++) {
-      const magnitude = Math.max(0, Math.min(1, this.smoothedBins[i]));
-      const barHeight = magnitude * areaHeight;
+      const magnitude = liquidAmount > 0
+        ? liquidMagnitude(this.smoothedBins, i, t, audio, liquidAmount, liquidSpeed, 1, false).magnitude
+        : Math.max(0, Math.min(1, this.smoothedBins[i]));
+      const barHeight = magnitude * areaHeight * beatHeightBoost;
       if (barHeight < 1) continue;
 
       const x = areaX + i * barWidth + gap / 2;

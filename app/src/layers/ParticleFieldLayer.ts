@@ -34,7 +34,6 @@ export class ParticleFieldLayerRuntime implements RuntimeLayer<ParticleFieldLaye
   private poolSize = 0;
 
   private lastT = -1;
-  private prevRms = 0;
   private spawnAccumulator = 0;
 
   constructor(config: ParticleFieldLayerConfig) {
@@ -148,13 +147,12 @@ export class ParticleFieldLayerRuntime implements RuntimeLayer<ParticleFieldLaye
       this.spawnParticle(pattern, cx, cy, ctx.width, ctx.height, baseSpeed, baseSize, sizeVariation, lifetime);
     }
 
-    // --- Beat burst ---
-    if (burstOnBeat && rms > burstThreshold && (rms - this.prevRms) > 0.1) {
+    // --- Beat burst: use true beat detection instead of RMS-delta heuristic ---
+    if (burstOnBeat && audio.beat && rms > burstThreshold) {
       for (let b = 0; b < burstCount && this.alive < maxParticles; b++) {
         this.spawnParticle(pattern, cx, cy, ctx.width, ctx.height, baseSpeed * 1.5, baseSize * 1.3, sizeVariation, lifetime * 0.7);
       }
     }
-    this.prevRms = rms;
 
     // --- Precompute color values ---
     const solidHex = hexStringToNumber(solidColor);

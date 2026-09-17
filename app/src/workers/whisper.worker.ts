@@ -8,6 +8,14 @@ type ASRPipeline = Awaited<ReturnType<typeof pipeline>>;
 
 // Cache by "modelId::device" so switching back to a loaded model is instant
 const cache = new Map<string, ASRPipeline>();
+const segmentOnlyModels = new Set<string>();
+
+function isWordTimestampCompatibilityError(error: unknown): boolean {
+  const message = String((error as any)?.message ?? error).toLocaleLowerCase();
+  return message.includes('cross attentions')
+    || message.includes('output_attentions')
+    || message.includes('extract timestamps');
+}
 
 function progressCb(modelId: string) {
   return (p: any) => {
@@ -42,13 +50,14 @@ async function loadPipeline(
 }
 
 self.addEventListener('message', async (e: MessageEvent) => {
-  const { type, audio, modelId, useGPU, gpuDtype, cpuDtype } = e.data as {
+  const { type, audio, modelId, useGPU, gpuDtype, cpuDtype, timestampMode } = e.data as {
     type: string;
     audio: Float32Array;
     modelId: string;
     useGPU: boolean;
     gpuDtype?: Record<string, string> | string;
     cpuDtype?: string;
+    timestampMode?: 'segment' | 'word';
   };
   if (type !== 'transcribe') return;
 
@@ -71,16 +80,44 @@ self.addEventListener('message', async (e: MessageEvent) => {
 
     self.postMessage({ type: 'status', message: 'Transcribing…' });
 
-    const result = await (asr as any)(audio, {
-      return_timestamps: true,
-      chunk_length_s: 30,
-      stride_length_s: 5,
-    });
+    const wantsWordTimestamps = timestampMode === 'word';
+    let resolvedTimestampMode: 'segment' | 'word' = wantsWordTimestamps ? 'word' : 'segment';
+    let result: any;
+
+    if (wantsWordTimestamps && !segmentOnlyModels.has(modelId)) {
+      try {
+        result = await (asr as any)(audio, {
+          return_timestamps: 'word',
+          chunk_length_s: 30,
+          stride_length_s: 5,
+        });
+      } catch (wordTimestampError) {
+        if (!isWordTimestampCompatibilityError(wordTimestampError)) throw wordTimestampError;
+        segmentOnlyModels.add(modelId);
+        resolvedTimestampMode = 'segment';
+        self.postMessage({
+          type: 'status',
+          message: 'This model does not include word-timing data. Retrying with segment timing…',
+        });
+        result = await (asr as any)(audio, {
+          return_timestamps: true,
+          chunk_length_s: 30,
+          stride_length_s: 5,
+        });
+      }
+    } else {
+      resolvedTimestampMode = 'segment';
+      result = await (asr as any)(audio, {
+        return_timestamps: true,
+        chunk_length_s: 30,
+        stride_length_s: 5,
+      });
+    }
 
     const chunks: Array<{ text: string; timestamp: [number, number | null] }> =
       result.chunks ?? [];
 
-    self.postMessage({ type: 'result', chunks });
+    self.postMessage({ type: 'result', chunks, timestampMode: resolvedTimestampMode });
   } catch (err: any) {
     self.postMessage({ type: 'error', message: String(err?.message ?? err) });
   }

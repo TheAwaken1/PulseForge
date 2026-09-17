@@ -42,6 +42,12 @@ void main() {
   float c3 = sin(v * PI + PI * 1.333) * 0.5 + 0.5;
   vec3 color = uColor1 * c1 + uColor2 * c2f + uColor3 * c3;
 
+  // Per-frequency spectrum modulation: sample the bin whose frequency matches
+  // the current interference pattern phase, adding fine spectral detail
+  float specFreq = fract(abs(v) + 0.5);
+  float specVal = sampleSpectrum(specFreq);
+  color += specVal * ar * 0.35 * (uColor1 * c2f + uColor2 * c3);
+
   color *= uIntensity * (1.0 + uRms * ar);
 
   finalColor = vec4(applyFeedback(color), 1.0);

@@ -4,8 +4,9 @@ import {
   ShaderLayerConfig, ShaderType,
   HDBarsReflectionLayerConfig, HDSonicSpikesLayerConfig,
   HDCircularSpectrumLayerConfig, ParticleFieldLayerConfig,
-  OscilloscopeLayerConfig, TextLayerConfig, EnergyRibbonLayerConfig,
+  OscilloscopeLayerConfig, TextLayerConfig,
   DotSphereEqualizerLayerConfig,
+  AudioTarget,
   staticParam, defaultTransform, createLayerId, createEffectId,
 } from '../types/project';
 
@@ -75,6 +76,9 @@ function makeRadialWaveform(overrides: Partial<RadialWaveformLayerConfig> = {}):
     lineWidth: staticParam(2),
     smoothing: { attack: staticParam(0.3), release: staticParam(0.06) },
     color: staticParam('#a29bfe'),
+    liquidMotion: true,
+    liquidAmount: staticParam(0.75),
+    liquidSpeed: staticParam(1.25),
     ...overrides,
   };
 }
@@ -97,6 +101,9 @@ function makeBottomSpectrum(overrides: Partial<BottomSpectrumLayerConfig> = {}):
     gain: staticParam(1.5),
     smoothing: { attack: staticParam(0.35), release: staticParam(0.08) },
     color: staticParam('#00cec9'),
+    liquidMotion: true,
+    liquidAmount: staticParam(0.45),
+    liquidSpeed: staticParam(0.85),
     ...overrides,
   };
 }
@@ -188,7 +195,7 @@ function makeShakeEffect(amount: number = 3, audioDriven: boolean = true, speed:
   };
 }
 
-function makePulseEffect(audioAmount: number = 0.15, smoothing: number = 0.3): EffectAny {
+function makePulseEffect(audioAmount: number = 0.15, smoothing: number = 0.3, audioTarget: AudioTarget = 'full'): EffectAny {
   return {
     id: createEffectId(),
     name: 'Pulse',
@@ -197,6 +204,25 @@ function makePulseEffect(audioAmount: number = 0.15, smoothing: number = 0.3): E
     baseScaleAdd: staticParam(0),
     audioAmount: staticParam(audioAmount),
     smoothing: staticParam(smoothing),
+    audioTarget,
+  };
+}
+
+function makeBeatPunchEffect(
+  zoomAmount: number = 0.1,
+  rotationDeg: number = 1.5,
+  positionPx: number = 6,
+  decayMs: number = 180,
+): EffectAny {
+  return {
+    id: createEffectId(),
+    name: 'Beat Punch',
+    kind: 'beatPunch',
+    enabled: true,
+    zoomAmount: staticParam(zoomAmount),
+    rotationDeg: staticParam(rotationDeg),
+    positionPx: staticParam(positionPx),
+    decayMs: staticParam(decayMs),
   };
 }
 
@@ -243,6 +269,28 @@ function makeBlurEffect(blur: number = 4, quality: number = 4): EffectAny {
     enabled: true,
     blur: staticParam(blur),
     quality: staticParam(quality),
+  };
+}
+
+function makeBloomEffect(
+  strength: number = 1.6,
+  radius: number = 4,
+  threshold: number = 0.32,
+  audioTarget: AudioTarget = 'full',
+): EffectAny {
+  return {
+    id: createEffectId(),
+    name: 'Bloom',
+    kind: 'bloom',
+    enabled: true,
+    threshold: staticParam(threshold),
+    strength: staticParam(strength),
+    radius: staticParam(radius),
+    softKnee: staticParam(0.55),
+    toneMap: true,
+    audioDriven: true,
+    audioAmount: staticParam(0.45),
+    audioTarget,
   };
 }
 
@@ -302,6 +350,7 @@ function makeHDCircularSpectrum(overrides: Partial<HDCircularSpectrumLayerConfig
     innerRing: { enabled: staticParam(true), width: staticParam(2), color: staticParam('#ffffff'), glowEnabled: staticParam(true) },
     outerRing: { enabled: staticParam(false), width: staticParam(2), color: staticParam('#ffffff'), glowEnabled: staticParam(false) },
     gamma: staticParam(0.86), contrast: staticParam(1.16), rotationSpeed: staticParam(0.1),
+    liquidMotion: true, liquidAmount: staticParam(0.65), liquidSpeed: staticParam(1.15),
     ...overrides,
   };
 }
@@ -333,6 +382,7 @@ function makeOscilloscope(overrides: Partial<OscilloscopeLayerConfig> = {}): Osc
     mirrorY: staticParam(0.5), circularRadius: staticParam(150), circularAmplitude: staticParam(80),
     lineGradient: { enabled: staticParam(false), color1: staticParam('#ff00ff'), color2: staticParam('#00ffff') },
     gamma: staticParam(1), stereoSpread: staticParam(0), scanlineEffect: staticParam(false),
+    liquidMotion: true, liquidAmount: staticParam(0.55), liquidSpeed: staticParam(1.4),
     ...overrides,
   };
 }
@@ -349,23 +399,6 @@ function makeText(overrides: Partial<TextLayerConfig> = {}): TextLayerConfig {
     scrollEnabled: staticParam(false), scrollSpeed: staticParam(2),
     letterSpacing: staticParam(0), strokeEnabled: staticParam(false),
     strokeColor: staticParam('#000000'), strokeWidth: staticParam(2),
-    ...overrides,
-  };
-}
-
-function makeEnergyRibbon(overrides: Partial<EnergyRibbonLayerConfig> = {}): EnergyRibbonLayerConfig {
-  return {
-    id: createLayerId(), name: 'Energy Ribbon', kind: 'energyRibbon', enabled: true,
-    opacity: staticParam(0.95), blendMode: 'add', transform: defaultTransform(), effects: [],
-    intensity: staticParam(1),
-    glowStrength: staticParam(1.3),
-    spikeSensitivity: staticParam(1),
-    ribbonThickness: staticParam(10),
-    smoothing: { attack: staticParam(0.35), release: staticParam(0.05) },
-    colorTheme: staticParam('electric'),
-    mirrorReflection: staticParam(true),
-    sampleCount: staticParam(192),
-    spikeCount: staticParam(96),
     ...overrides,
   };
 }
@@ -1452,7 +1485,7 @@ export const PRESET_DOT_DNA: PresetTemplate = {
 /**
  * DOT SPHERE (SOUNDWAVE) — Clean HD dot-matrix equalizer sphere
  */
-export const PRESET_DOT_SPHERE: PresetTemplate = {
+export const PRESET_NEON_360: PresetTemplate = {
   id: 'dot-sphere-equalizer',
   name: 'Neon 360 Spectrum',
   description: 'Full-circle rainbow radial spectrum with glowing ring, peak hold, and EDM vignette',
@@ -1526,9 +1559,207 @@ export const PRESET_DOT_SPHERE: PresetTemplate = {
   ],
 };
 
+/**
+ * DOT SPHERE EQUALIZER — Standalone dot-matrix sphere preset.
+ */
+export const PRESET_DOT_SPHERE: PresetTemplate = {
+  id: 'dot-sphere',
+  name: 'Dot Sphere Equalizer',
+  description: 'A luminous 3D dot sphere that breathes and expands with the music',
+  settings: { backgroundColor: '#02030a' },
+  layers: [
+    makeDotSphereEqualizer({
+      name: 'Dot Sphere Equalizer',
+      columns: staticParam(92),
+      dotsPerColumn: staticParam(32),
+      baseRadius: staticParam(3.6),
+      sphereSize: staticParam(0.4),
+      mirrorEnabled: staticParam(true),
+      gain: staticParam(0.8),
+      attack: staticParam(0.7),
+      release: staticParam(0.3),
+      peakHoldEnabled: staticParam(true),
+      peakHoldDecay: staticParam(0.96),
+      gradientPreset: 'rainbow',
+      glowEnabled: staticParam(true),
+      glowStrength: staticParam(3),
+      textEnabled: staticParam(true),
+      textString: 'SOUNDWAVE',
+    }),
+  ],
+};
+
+/**
+ * KINETIC POSTER — Editorial typography, restrained motion, and beat-led impact.
+ */
+export const PRESET_KINETIC_POSTER: PresetTemplate = {
+  id: 'kinetic-poster',
+  name: 'Kinetic Poster',
+  description: 'Bold editable type, a minimal waveform, and polished beat-driven motion',
+  settings: { backgroundColor: '#08070b' },
+  layers: [
+    {
+      ...makeShaderLayer('pulseRings', 'Poster Atmosphere', {
+        speed: staticParam(0.16),
+        intensity: staticParam(0.25),
+        scale: staticParam(1.15),
+        color1: staticParam('#ff4d7d'),
+        color2: staticParam('#6f5cff'),
+        color3: staticParam('#15121d'),
+        audioReactivity: staticParam(0.3),
+        opacity: staticParam(0.28),
+      }),
+      effects: [makePulseEffect(0.025, 0.2, 'bass'), makeVignetteEffect(0.72, 0.4)],
+    },
+    {
+      ...makeParticleField({
+        name: 'Poster Grain',
+        maxParticles: staticParam(180),
+        spawnRate: staticParam(12),
+        baseSpeed: staticParam(24),
+        baseSize: staticParam(1.8),
+        sizeVariation: staticParam(0.7),
+        lifetime: staticParam(6),
+        pattern: 'rain',
+        gravityY: staticParam(4),
+        colorMode: 'gradient',
+        gradientColor1: staticParam('#ff789e'),
+        gradientColor2: staticParam('#8d80ff'),
+        audioSpawnBoost: staticParam(0.35),
+        audioSpeedBoost: staticParam(0.2),
+        audioSizeBoost: staticParam(0.15),
+        opacity: staticParam(0.28),
+        blendMode: 'screen',
+        burstOnBeat: staticParam(true),
+        burstCount: staticParam(8),
+      }),
+      effects: [],
+    },
+    {
+      ...makeText({
+        name: 'Artist Name',
+        text: 'YOUR NAME',
+        fontFamily: 'Arial',
+        fontSize: staticParam(132),
+        fontWeight: 'bold',
+        color: staticParam('#fff7f4'),
+        positionY: staticParam(0.42),
+        glowEnabled: staticParam(true),
+        glowStrength: staticParam(0.55),
+        glowColor: staticParam('#ff4d7d'),
+        audioPulseAmount: staticParam(0),
+        letterSpacing: staticParam(16),
+      }),
+      effects: [makeBeatPunchEffect(0.075, 0.8, 3, 210)],
+    },
+    makeText({
+      name: 'Track Title',
+      text: 'NEW RELEASE',
+      fontFamily: 'Arial',
+      fontSize: staticParam(30),
+      fontWeight: 'normal',
+      color: staticParam('#c8c2d2'),
+      positionY: staticParam(0.56),
+      glowEnabled: staticParam(false),
+      audioPulseAmount: staticParam(0),
+      letterSpacing: staticParam(13),
+    }),
+    {
+      ...makeOscilloscope({
+        name: 'Editorial Waveform',
+        mode: 'horizontal',
+        lineWidth: staticParam(2),
+        gain: staticParam(0.75),
+        smoothing: staticParam(0.42),
+        color: staticParam('#ff6f98'),
+        glowEnabled: staticParam(true),
+        glowStrength: staticParam(0.8),
+        glowColor: staticParam('#755fff'),
+        mirrorY: staticParam(0.72),
+        lineGradient: {
+          enabled: staticParam(true),
+          color1: staticParam('#ff4d7d'),
+          color2: staticParam('#7868ff'),
+        },
+        opacity: staticParam(0.75),
+        blendMode: 'screen',
+      }),
+      effects: [makeGlowEffect('#755fff', 8)],
+    },
+  ],
+};
+
+/**
+ * NEON MESH ODYSSEY — A dimensional wire landscape with frequency terrain.
+ */
+export const PRESET_NEON_MESH_ODYSSEY: PresetTemplate = {
+  id: 'neon-mesh-odyssey',
+  name: 'Neon Mesh Odyssey',
+  description: 'A cinematic perspective mesh where the horizon, terrain, and stars react separately to the mix',
+  settings: { backgroundColor: '#01030c' },
+  layers: [
+    {
+      ...makeShaderLayer('meshWave', 'Frequency Terrain', {
+        speed: staticParam(0.78),
+        intensity: staticParam(1.25),
+        scale: staticParam(1.08),
+        color1: staticParam('#ff2bd6'),
+        color2: staticParam('#13d9ff'),
+        color3: staticParam('#fff2ad'),
+        audioReactivity: staticParam(1.75),
+        feedbackEnabled: true,
+        feedbackAmount: staticParam(0.13),
+        feedbackZoom: staticParam(1.001),
+        feedbackRotate: staticParam(0),
+      }),
+      effects: [
+        makeBloomEffect(1.45, 4.5, 0.28, 'bass'),
+        makeChromaticEffect(2.2, 0.08, true),
+        makeVignetteEffect(0.64, 0.42),
+        makeBeatPunchEffect(0.035, 0.18, 1.2, 190),
+      ],
+    },
+  ],
+};
+
+/**
+ * KALEIDO REACTOR — Mirrored spectral ink with a bass-driven energy core.
+ */
+export const PRESET_KALEIDO_REACTOR: PresetTemplate = {
+  id: 'kaleido-reactor',
+  name: 'Kaleido Reactor',
+  description: 'Ten-way mirrored spectral geometry with a pulsing reactor core and polished neon bloom',
+  settings: { backgroundColor: '#03000b' },
+  layers: [
+    {
+      ...makeShaderLayer('kaleidoReactor', 'Prismatic Reactor', {
+        speed: staticParam(0.64),
+        intensity: staticParam(1.38),
+        scale: staticParam(1.16),
+        color1: staticParam('#ff1f8f'),
+        color2: staticParam('#6d4aff'),
+        color3: staticParam('#25f4ff'),
+        audioReactivity: staticParam(1.9),
+        feedbackEnabled: true,
+        feedbackAmount: staticParam(0.18),
+        feedbackZoom: staticParam(1.002),
+        feedbackRotate: staticParam(0.001),
+      }),
+      effects: [
+        makeBloomEffect(1.7, 5.2, 0.24, 'full'),
+        makeChromaticEffect(3.1, 0.22, true),
+        makeVignetteEffect(0.74, 0.38),
+        makeBeatPunchEffect(0.045, 0.45, 1.5, 170),
+      ],
+    },
+  ],
+};
+
 /* ================================================================== */
 
 export const ALL_PRESETS: PresetTemplate[] = [
+  PRESET_NEON_MESH_ODYSSEY,
+  PRESET_KALEIDO_REACTOR,
   PRESET_HYPERSPACE,
   PRESET_FRACTAL_DREAMS,
   PRESET_PSYCHEDELIC,
@@ -1538,4 +1769,6 @@ export const ALL_PRESETS: PresetTemplate[] = [
   PRESET_AURORA_BOREALIS,
   PRESET_LIQUID_DREAMS,
   PRESET_FLUID_NEBULA,
+  PRESET_DOT_SPHERE,
+  PRESET_KINETIC_POSTER,
 ];

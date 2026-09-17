@@ -12,9 +12,9 @@ import { HDCircularSpectrumLayerRuntime } from './HDCircularSpectrumLayer';
 import { ParticleFieldLayerRuntime } from './ParticleFieldLayer';
 import { OscilloscopeLayerRuntime } from './OscilloscopeLayer';
 import { TextLayerRuntime } from './TextLayer';
-import { EnergyRibbonLayerRuntime } from './EnergyRibbonLayer';
 import { DotSphereEqualizerLayerRuntime } from './DotSphereEqualizerLayer';
 import { LyricsLayerRuntime } from './LyricsLayer';
+import { SpectrogramLayerRuntime } from './SpectrogramLayer';
 
 /**
  * Create a runtime layer instance from a layer configuration.
@@ -43,14 +43,14 @@ export function createRuntimeLayer(config: LayerAny): RuntimeLayer {
       return new ParticleFieldLayerRuntime(config);
     case 'oscilloscope':
       return new OscilloscopeLayerRuntime(config);
-    case 'energyRibbon':
-      return new EnergyRibbonLayerRuntime(config);
     case 'dotSphereEqualizer':
       return new DotSphereEqualizerLayerRuntime(config);
     case 'text':
       return new TextLayerRuntime(config);
     case 'lyrics':
       return new LyricsLayerRuntime(config);
+    case 'spectrogram':
+      return new SpectrogramLayerRuntime(config);
     default:
       throw new Error(`Unknown layer kind: ${(config as any).kind}`);
   }

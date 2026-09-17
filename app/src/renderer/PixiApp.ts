@@ -108,9 +108,10 @@ export class PixiApp {
     t: number,
     audio: AudioFrame,
     layers: LayerAny[],
-    opts?: { present?: boolean },
+    opts?: { present?: boolean; syncMediaTime?: boolean },
   ): void {
     if (!this.initialized) return;
+    this.resources.updateAnimatedTextures(t, opts?.syncMediaTime ?? false);
     this.scene.update(t, audio, layers);
     if (opts?.present ?? true) {
       this.app.render();

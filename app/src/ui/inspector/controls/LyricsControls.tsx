@@ -10,6 +10,18 @@ interface Props {
 
 export const LyricsControls: React.FC<Props> = ({ layer, handleParamChange, handleDirectChange }) => (
   <>
+    <Section title="Timing Sync">
+      <Field label="Start Delay (sec)">
+        <RangeInput value={sampleParam(layer.timingOffsetSec ?? { kind: 'static', value: 0 }, 0)} min={-15} max={60} step={0.1} onChange={(v) => handleParamChange('timingOffsetSec', v)} />
+      </Field>
+      <Field label="Timeline Stretch">
+        <RangeInput value={sampleParam(layer.timingScale ?? { kind: 'static', value: 1 }, 0)} min={0.5} max={2} step={0.01} onChange={(v) => handleParamChange('timingScale', v)} />
+      </Field>
+      <div style={{ color: 'var(--text-dim)', fontSize: 11, lineHeight: 1.4 }}>
+        Lyrics ahead? Increase delay first, then raise stretch above 1.00 to slow their progression.
+      </div>
+    </Section>
+
     <Section title="Style">
       <Field label="Font">
         <select value={layer.fontFamily} onChange={(e) => handleDirectChange('fontFamily', e.target.value)}>

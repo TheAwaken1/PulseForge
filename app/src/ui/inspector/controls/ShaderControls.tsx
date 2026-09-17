@@ -25,7 +25,11 @@ export const ShaderControls: React.FC<Props> = ({ layer, handleParamChange, hand
           <option value="nebula">Nebula</option>
           <option value="geometric">Geometric</option>
           <option value="liquid">Liquid</option>
-          <option value="displacement">Fullscreen Displacement</option>
+          <option value="meshWave">Neon Mesh Wave</option>
+          <option value="kaleidoReactor">Kaleido Reactor</option>
+          {layer.shaderType === 'displacement' && (
+            <option value="displacement">Cinematic Refraction (Preset)</option>
+          )}
         </select>
       </Field>
       <Field label="Speed">

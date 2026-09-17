@@ -34,6 +34,20 @@ export abstract class HDAudioBase {
   protected peaks = new Float32Array(96);
   protected mapped = new Float32Array(96);
   protected shaped = new Float32Array(96);
+  /** Decaying beat-kick multiplier: 1.0 on a beat, decays to 0 over ~200ms. */
+  protected beatKick = 0;
+
+  /**
+   * Update the beat-kick state. Call once per frame before processAudio().
+   * frameFactor from timeFactor60fps() normalizes the decay rate.
+   */
+  protected updateBeatKick(beat: boolean, frameFactor: number): void {
+    if (beat) {
+      this.beatKick = 1.0;
+    } else {
+      this.beatKick *= Math.pow(0.65, frameFactor);
+    }
+  }
 
   /**
    * Resize all audio arrays when the bin/bar count changes.

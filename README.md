@@ -1,67 +1,103 @@
 # PulseForge
 
-A fully local, cross-platform audio visualizer editor. Create reactive music videos with layered graphics, AI-transcribed lyrics, and frame-perfect MP4 exports — all running in your browser via Pinokio.
+PulseForge is a fully local, cross-platform audio visualizer editor. Turn a background, logo, and song into a branded music visual, customize every layer, and export a frame-perfect MP4 from your browser through Pinokio.
 
 ## What it does
 
-PulseForge is a motion graphics editor built for audio visualizer videos. Import your audio track, stack visualizer layers, drop in a logo, add lyrics, apply effects, pick from 18 built-in presets or build your own, and export an MP4 — entirely offline.
-
-- **Audio-reactive rendering** - All layers respond to your music in real-time via WebAudio API
-- **18 built-in presets** - Warp Tunnel, Plasma Ocean, Hyperspace, Fractal Dreams, Neon Vortex, Pulse Dimension, Psychedelic Mandala, Retro 1980s, Calm Pulse, HD Rainbow Bars, HD Sonic Spikes, Aurora Borealis, Deep Space, Sacred Geometry, Liquid Dreams, Fluid Nebula, Dot DNA, Neon 360 Spectrum
-- **Layered composition** - Stack backgrounds, logos, visualizers, shaders, text, and lyrics layers
-- **12 visualizer layer types** - Radial Spectrum, Radial Waveform, Bottom Spectrum, HD Rainbow Bars Reflection, HD Sonic Spikes, HD Circular Spectrum, Particle Field, Oscilloscope, Energy Ribbon, Dot Sphere Equalizer, Shader (8 GLSL shaders with Milkdrop-style feedback), Text
-- **8 post-processing effects** - Glow, Shake, Pulse, Strobe, Blur, Chromatic Aberration, Gradient Map, Vignette
-- **AI lyrics transcription** - Local Whisper (runs in-browser via WebAssembly/WebGPU) or OpenAI Whisper API; imports .lrc files; lyrics survive preset switches
-- **Deterministic export** - Offline audio analysis (custom FFT pipeline matching Web Audio API) guarantees frame-perfect MP4 output saved to the `output/` folder
-- **Project save/load** - JSON project format, autosave with crash recovery
-- **GPU accelerated** - PixiJS v8 WebGL rendering
+- **Guided Brand Visualizer** - Add a background, logo, and audio track in a focused three-step workflow.
+- **Live audio-reactive rendering** - Visual layers respond to music through the Web Audio API.
+- **Motion presets** - Start with cinematic shader and visualizer combinations, shown with animated previews.
+- **Advanced layer editor** - Stack backgrounds, logos, spectra, particles, shaders, text, lyrics, and spectrogram layers.
+- **Animated brand media** - Use still images, GIFs, or short looping videos for backgrounds and logos; animated media is refreshed in the live preview and synchronized during export.
+- **Background control** - Darken imported artwork independently so logos, lyrics, and reactive layers remain readable.
+- **Creative layer effects** - Finish any layer with HDR bloom, Color Grade, Beat Pixelate, glow, pulse, shake, chromatic aberration, vignette, and more.
+- **Directed audio reactions** - Target supported effects to the full mix, bass, mids, highs, or detected beats, with Beat Punch for sharp music-video impact.
+- **Liquid motion engine** - Add adjustable organic flow to radial spectra, radial waveforms, bottom spectra, circular HD spectra, and oscilloscopes.
+- **Flexible lyrics** - Import timed `.lrc` files, auto-time structured `.txt` lyrics, align supplied lines to real vocal timing with Whisper, or transcribe with local Whisper or the OpenAI Whisper API.
+- **Deterministic MP4 export** - Offline audio analysis produces repeatable, frame-perfect output in the `output/` folder.
+- **Local project files** - Save, load, autosave, undo, and recover projects without uploading media.
 
 ## Quick Start
 
-1. **Import Audio** - Click "Import Audio" and select an MP3, WAV, or FLAC file
-2. **Choose a Preset** - Click the Presets button in the toolbar and pick one, or start with an empty canvas
-3. **Add Layers** - Use the Layers panel to add visualizers, backgrounds, logos, text, or lyrics
-4. **Import Your Logo** - Add a Logo layer, then click the image slot in the Inspector to upload a PNG/SVG
-5. **Add Lyrics** - In the Lyrics panel: upload an `.lrc` file, or click "Transcribe Audio" to generate them with AI
-6. **Press Play** - Use the transport bar to preview in real-time
-7. **Tune Parameters** - Select any layer and adjust settings in the Inspector panel on the right
-8. **Export** - Click "Export MP4" — the video is saved to the `output/` folder automatically
+1. Launch PulseForge and choose **Brand Visualizer**.
+2. Add 16:9 background artwork, a GIF, or a short video. PulseForge stretches it to the canvas and adds a subtle audio-reactive shake automatically.
+3. Add a transparent logo, GIF, or short video. PulseForge centers it in a circular bordered frame and applies a polished color grade, shake, and pulse automatically.
+4. Choose an MP3, WAV, OGG, or FLAC track.
+5. Open the visualizer, press Play, and optionally fine-tune it in the Advanced Editor.
+6. Select **Export MP4**. Finished videos are written to `output/`.
 
-## Project Format
+You can reopen Quick Create from the top toolbar. Choose **Advanced Editor** on the welcome screen when you want to start with an empty layer stack.
 
-Projects are saved as `.json` files. Each project contains:
-- Audio asset reference (path stored, not embedded)
-- Layer stack with all parameters
-- Per-parameter animation envelopes (static or keyframed)
-- Background color and resolution settings
+## Project format
 
-Use **File > Save** (or Ctrl+S) to save, **File > Open** to load a `.json` project file.
+Projects are JSON documents containing resolution, duration, asset references, an ordered layer stack, effect settings, and audio configuration. Media paths are referenced rather than embedded.
 
-## Tech Stack
+```json
+{
+  "version": 1,
+  "name": "My Visualizer",
+  "fps": 30,
+  "resolution": { "width": 1920, "height": 1080 },
+  "assets": [],
+  "layers": [],
+  "audio": { "assetId": "" },
+  "settings": { "previewScale": 1, "backgroundColor": "#1a1a2e" }
+}
+```
+
+## Programmatic access
+
+PulseForge is a local browser editor and does not currently expose an HTTP generation endpoint. Its stable integration surface is the saved project JSON format.
+
+### JavaScript
+
+```javascript
+import { readFile } from "node:fs/promises";
+
+const project = JSON.parse(await readFile("project.json", "utf8"));
+console.log(project.name, project.layers.length);
+```
+
+### Python
+
+```python
+import json
+
+with open("project.json", encoding="utf-8") as file:
+    project = json.load(file)
+
+print(project["name"], len(project["layers"]))
+```
+
+### cURL
+
+There is no REST endpoint to call with cURL. When the development server is running, cURL can only verify that the local UI is available:
+
+```bash
+curl http://localhost:1420/
+```
+
+The actual port is captured automatically by the Pinokio launcher and may differ if port 1420 is occupied.
+
+## Tech stack
 
 | Component | Technology |
-|-----------|-----------|
-| Frontend | React + TypeScript |
-| Build Tool | Vite |
+| --- | --- |
+| Frontend | React and TypeScript |
+| Build | Vite |
 | State | Zustand |
-| Renderer | PixiJS v8 (WebGL) |
-| Audio Analysis | Web Audio API + custom FFT |
-| AI Transcription | @huggingface/transformers (Whisper) |
-| Launcher | Pinokio (Node.js) |
+| Renderer | PixiJS 8 and WebGL |
+| Audio analysis | Web Audio API and custom FFT |
+| Transcription | Hugging Face Transformers / Whisper |
+| Desktop integration | Tauri 2 |
+| Launcher | Pinokio |
 
-## Platform Support
+## Platform support
 
-PulseForge runs in any modern Chromium-based browser. It works on:
-- **Windows** - Full support including WebGPU Whisper acceleration
-- **macOS** - Full support (WebGPU on Apple Silicon)
-- **Linux** - Full support (WebGPU availability depends on GPU/driver)
-
-The Pinokio launcher handles Node.js dependency installation cross-platform via `npm`.
+PulseForge runs in modern Chromium-based browsers on Windows, macOS, and Linux. WebGPU availability for local transcription depends on the browser, GPU, and driver.
 
 ## License
 
 MIT
 
----
-
-Made by [@TheAwakenOne619](https://x.com/TheAwakenOne619)
+Made by [@TheAwakenOne619](https://x.com/TheAwakenOne619).

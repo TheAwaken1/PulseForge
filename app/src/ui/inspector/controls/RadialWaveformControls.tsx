@@ -1,6 +1,7 @@
 import React from 'react';
 import { sampleParam, type RadialWaveformLayerConfig } from '../../../types/project';
 import { Section, Field, RangeInput } from '../SharedWidgets';
+import { LiquidMotionControls } from './LiquidMotionControls';
 
 interface Props {
   layer: RadialWaveformLayerConfig;
@@ -21,5 +22,6 @@ export const RadialWaveformControls: React.FC<Props> = ({ layer, handleParamChan
     <Field label="Color">
       <input type="color" value={sampleParam(layer.color, 0)} onChange={(e) => handleParamChange('color', e.target.value)} />
     </Field>
+    <LiquidMotionControls enabled={layer.liquidMotion} amount={layer.liquidAmount} speed={layer.liquidSpeed} handleParamChange={handleParamChange} />
   </Section>
 );

@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import { useProjectStore } from '../state/projectStore';
 import { useTransportStore } from '../state/transportStore';
+import type { Asset } from '../types/project';
 
 /**
  * Import an audio file: creates a blob URL asset and sets it as the project audio source.
@@ -34,16 +35,27 @@ export async function importAudioFile(file: File): Promise<void> {
 /**
  * Import an image file: creates a blob URL asset.
  */
-export function importImageFile(file: File): void {
+export function importImageFile(file: File): Asset {
+  return importVisualFile(file);
+}
+
+/** Import a still image, GIF, or short video for visual layers. */
+export function importVisualFile(file: File): Asset {
   const url = URL.createObjectURL(file);
   const assetId = uuid();
+  const isVideo = file.type.startsWith('video/');
   const asset = {
     id: assetId,
-    type: 'image' as const,
+    type: isVideo ? 'video' as const : 'image' as const,
     name: file.name,
     relPath: url,
     sha256: '',
     sizeBytes: file.size,
+    metadata: {
+      mimeType: file.type,
+      animated: isVideo || file.type === 'image/gif',
+    },
   };
   useProjectStore.getState().addAsset(asset);
+  return asset;
 }

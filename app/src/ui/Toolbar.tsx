@@ -9,18 +9,22 @@ import {
   estimateExportFileSizeBytes,
   type ExportQualityMode,
 } from '../export/ExportOrchestrator';
-import { importAudioFile, importImageFile } from '../utils/audioImport';
+import { importAudioFile, importVisualFile } from '../utils/audioImport';
 import { useHistoryStore } from '../state/historyStore';
 import { PresetGallery } from './PresetGallery';
 
 const EXPORT_RESOLUTION = { width: 1920, height: 1080 };
 
-export const Toolbar: React.FC = () => {
+interface ToolbarProps {
+  onQuickCreate?: () => void;
+}
+
+export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
   const { project, setProject, setProjectPath, projectPath, dirty, markClean } = useProjectStore();
   const exportStore = useExportStore();
   const { canUndo, canRedo, undo, redo, clearHistory } = useHistoryStore();
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const visualInputRef = useRef<HTMLInputElement>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const exportRef = useRef<ExportOrchestrator | null>(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -41,6 +45,7 @@ export const Toolbar: React.FC = () => {
     transport.setDuration(0);
     setProject(createDefaultProject());
     clearHistory();
+    onQuickCreate?.();
   };
 
   const handleSave = async () => {
@@ -73,12 +78,12 @@ export const Toolbar: React.FC = () => {
     e.target.value = '';
   };
 
-  const handleImportImage = () => { imageInputRef.current?.click(); };
+  const handleImportVisual = () => { visualInputRef.current?.click(); };
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    importImageFile(file);
+    importVisualFile(file);
     e.target.value = '';
   };
 
@@ -169,8 +174,8 @@ export const Toolbar: React.FC = () => {
         <button onClick={handleImportAudio}>
           <span style={styles.btnIcon}>&#9835;</span> Audio
         </button>
-        <button onClick={handleImportImage}>
-          <span style={styles.btnIcon}>&#9638;</span> Image
+        <button onClick={handleImportVisual}>
+          <span style={styles.btnIcon}>&#9638;</span> Visual
         </button>
         <div style={styles.divider} />
         <button className="ghost" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" style={{ fontSize: 15, padding: '4px 6px', opacity: canUndo ? 1 : 0.3 }}>
@@ -182,8 +187,11 @@ export const Toolbar: React.FC = () => {
       </div>
 
       <div style={styles.center}>
+        <button className="quick-create-button" onClick={onQuickCreate}>
+          <span style={styles.btnIcon}>✦</span> Quick Create
+        </button>
         <button onClick={() => setGalleryOpen(true)}>
-          <span style={styles.btnIcon}>&#9776;</span> Presets
+          Presets
         </button>
         <PresetGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} />
       </div>
@@ -211,7 +219,7 @@ export const Toolbar: React.FC = () => {
       </div>
 
       <input ref={audioInputRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={handleAudioFile} />
-      <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageFile} />
+      <input ref={visualInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleImageFile} />
       {exportModalOpen && (
         <div style={styles.modalBackdrop} onClick={() => setExportModalOpen(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>

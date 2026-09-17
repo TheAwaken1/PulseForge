@@ -2,7 +2,7 @@ import React from 'react';
 import { ALL_PRESETS, type PresetTemplate } from '../presets/templates';
 import { PresetManager } from '../presets/PresetManager';
 import { useProjectStore } from '../state/projectStore';
-import type { ShaderLayerConfig, StaticParam } from '../types/project';
+import { PresetArtwork } from './PresetArtwork';
 
 interface PresetGalleryProps {
   open: boolean;
@@ -51,8 +51,6 @@ const PresetCard: React.FC<{
   active: boolean;
   onClick: () => void;
 }> = ({ preset, active, onClick }) => {
-  const colors = extractPresetColors(preset);
-
   return (
     <div
       className="preset-card"
@@ -63,64 +61,14 @@ const PresetCard: React.FC<{
       }}
       onClick={onClick}
     >
-      <div style={styles.colorBar}>
-        {colors.map((c, i) => (
-          <div key={i} style={{ flex: 1, background: c, height: '100%' }} />
-        ))}
-      </div>
+      <PresetArtwork preset={preset} compact />
       <div style={styles.cardBody}>
         <div style={styles.cardName}>{preset.name}</div>
         <div style={styles.cardDesc}>{preset.description}</div>
-        <div style={styles.colorDots}>
-          {colors.map((c, i) => (
-            <div key={i} style={{ ...styles.dot, background: c }} />
-          ))}
-        </div>
       </div>
     </div>
   );
 };
-
-/**
- * Extract representative colors from a preset's layers.
- */
-export function extractPresetColors(preset: PresetTemplate): string[] {
-  // First try shader layers
-  for (const layer of preset.layers) {
-    if (layer.kind === 'shader') {
-      const sl = layer as ShaderLayerConfig;
-      return [
-        (sl.color1 as StaticParam<string>).value,
-        (sl.color2 as StaticParam<string>).value,
-        (sl.color3 as StaticParam<string>).value,
-      ];
-    }
-    if (layer.kind === 'energyRibbon') {
-      const theme = (layer as any).colorTheme?.kind === 'static' ? (layer as any).colorTheme.value : 'electric';
-      if (theme === 'ice') return ['#ffffff', '#b8f5ff', '#4da3ff'];
-      if (theme === 'sunset') return ['#fff6f0', '#ff9a52', '#ff2e9e'];
-      return ['#ffffff', '#00f3ff', '#1e54ff'];
-    }
-  }
-  // Fallback: collect from spectrum/waveform layers
-  const fallback: string[] = [];
-  for (const layer of preset.layers) {
-    if (layer.kind === 'radialSpectrum' && fallback.length < 3) {
-      const c = (layer as any).color?.solid;
-      if (c && c.kind === 'static') fallback.push(c.value);
-    }
-    if (layer.kind === 'radialWaveform' && fallback.length < 3) {
-      const c = (layer as any).color;
-      if (c && c.kind === 'static') fallback.push(c.value);
-    }
-    if (layer.kind === 'bottomSpectrum' && fallback.length < 3) {
-      const c = (layer as any).color;
-      if (c && c.kind === 'static') fallback.push(c.value);
-    }
-  }
-  while (fallback.length < 3) fallback.push('#6c5ce7');
-  return fallback;
-}
 
 const styles: Record<string, React.CSSProperties> = {
   backdrop: {
@@ -169,11 +117,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid var(--border)',
     background: 'var(--bg-secondary)',
   },
-  colorBar: {
-    display: 'flex',
-    height: 6,
-    width: '100%',
-  },
   cardBody: {
     padding: '12px 14px',
   },
@@ -192,15 +135,5 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
-  },
-  colorDots: {
-    display: 'flex',
-    gap: 4,
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: '50%',
-    border: '1px solid rgba(255,255,255,0.1)',
   },
 };

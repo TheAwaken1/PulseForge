@@ -66,6 +66,16 @@ uniform float uDistortionStrength;
 uniform float uFlowSpeed;
 uniform float uViscosity;
 
+uniform float uBeat;       // decaying flash: 1.0 on beat, ~0 within 200ms
+uniform float uBeatPhase;  // 0→1 sawtooth, resets to 0 each beat
+uniform float uBpm;        // estimated tempo
+
+uniform sampler2D uSpectrum; // 72×1 texture, R channel = normalized bin value
+
+float sampleSpectrum(float freq) {
+  return texture(uSpectrum, vec2(clamp(freq, 0.0, 1.0), 0.5)).r;
+}
+
 #define PI  3.14159265359
 #define TAU 6.28318530718
 

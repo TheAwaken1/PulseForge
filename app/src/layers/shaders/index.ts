@@ -20,6 +20,8 @@ import { NEBULA_FRAG } from './nebula';
 import { GEOMETRIC_FRAG } from './geometric';
 import { LIQUID_FRAG } from './liquid';
 import { DISPLACEMENT_FRAG } from './displacement';
+import { MESH_WAVE_FRAG } from './meshWave';
+import { KALEIDO_REACTOR_FRAG } from './kaleidoReactor';
 
 /* ------------------------------------------------------------------ */
 /*  Shader registry                                                    */
@@ -39,6 +41,8 @@ export const SHADER_FRAGMENTS: Record<ShaderType, string> = {
   geometric: GEOMETRIC_FRAG,
   liquid: LIQUID_FRAG,
   displacement: DISPLACEMENT_FRAG,
+  meshWave: MESH_WAVE_FRAG,
+  kaleidoReactor: KALEIDO_REACTOR_FRAG,
 };
 
 export function getFragmentSource(type: ShaderType): string {

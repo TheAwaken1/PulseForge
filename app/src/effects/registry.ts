@@ -8,6 +8,10 @@ import { BlurEffectRuntime } from './BlurEffect';
 import { ChromaticAberrationEffectRuntime } from './ChromaticAberrationEffect';
 import { GradientMapEffectRuntime } from './GradientMapEffect';
 import { VignetteEffectRuntime } from './VignetteEffect';
+import { BloomEffectRuntime } from './BloomEffect';
+import { ColorGradeEffectRuntime } from './ColorGradeEffect';
+import { PixelateEffectRuntime } from './PixelateEffect';
+import { BeatPunchEffectRuntime } from './BeatPunchEffect';
 
 /**
  * Create a runtime effect instance from an effect configuration.
@@ -30,6 +34,14 @@ export function createRuntimeEffect(config: EffectAny): RuntimeEffect {
       return new GradientMapEffectRuntime(config);
     case 'vignette':
       return new VignetteEffectRuntime(config);
+    case 'bloom':
+      return new BloomEffectRuntime(config);
+    case 'colorGrade':
+      return new ColorGradeEffectRuntime(config);
+    case 'pixelate':
+      return new PixelateEffectRuntime(config);
+    case 'beatPunch':
+      return new BeatPunchEffectRuntime(config);
     default:
       throw new Error(`Unknown effect kind: ${(config as any).kind}`);
   }

@@ -4,6 +4,7 @@ import type { AudioFrame } from '../types/audio';
 import type { OscilloscopeLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
 import { clamp, hexStringToNumber, lerpColor, bandStatsAudio, DESIGN_WIDTH, DESIGN_HEIGHT } from './layerUtils';
+import { liquidMagnitude } from './liquidMotion';
 
 /**
  * Oscilloscope waveform layer: draws audio frequency data as a continuous
@@ -18,6 +19,8 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
   private glow: PIXI.Graphics;
   private glowBlur: PIXI.BlurFilter;
   private smoothed: Float32Array;
+  private beatFlash = 0;
+  private lastT = -1;
 
   constructor(config: OscilloscopeLayerConfig) {
     this.id = config.id;
@@ -49,6 +52,15 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
     this.fill.clear();
     this.glow.clear();
 
+    // Beat flash: amplitude surge on each beat
+    const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    this.lastT = t;
+    if (audio.beat) {
+      this.beatFlash = 1.0;
+    } else {
+      this.beatFlash *= Math.pow(0.65, dt * 60);
+    }
+
     const mode = this.config.mode;
     const lineWidth = clamp(sampleParam(this.config.lineWidth, t), 1, 12);
     const gain = clamp(sampleParam(this.config.gain, t), 0.5, 5);
@@ -72,6 +84,10 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
     const gamma = clamp(sampleParam(this.config.gamma, t), 0.4, 1.8);
     const stereoSpread = clamp(sampleParam(this.config.stereoSpread, t), 0, 1);
     const scanlineEffect = sampleParam(this.config.scanlineEffect, t);
+    const liquidAmount = this.config.liquidMotion
+      ? (this.config.liquidAmount ? sampleParam(this.config.liquidAmount, t) : 0.65)
+      : 0;
+    const liquidSpeed = this.config.liquidSpeed ? sampleParam(this.config.liquidSpeed, t) : 1;
 
     // Ensure smoothed buffer matches sampleCount
     if (this.smoothed.length !== sampleCount) {
@@ -109,10 +125,26 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
       this.smoothed[i] = prev + (1 - smoothing) * (raw - prev);
     }
 
-    // Apply gain and gamma to produce final values array
+    // Apply gain and gamma to produce final values array (beat flash adds up to 25% amplitude boost)
+    const beatGain = 1 + this.beatFlash * 0.25;
     const values = new Float32Array(sampleCount);
     for (let i = 0; i < sampleCount; i++) {
-      values[i] = Math.pow(clamp(this.smoothed[i] * gain, 0, 2), gamma);
+      values[i] = Math.pow(clamp(this.smoothed[i] * gain * beatGain, 0, 2), gamma);
+    }
+    if (liquidAmount > 0) {
+      const baseValues = values.slice();
+      for (let i = 0; i < sampleCount; i++) {
+        values[i] = liquidMagnitude(
+          baseValues,
+          i,
+          t,
+          audio,
+          liquidAmount,
+          liquidSpeed,
+          2,
+          this.config.mode === 'circular',
+        ).magnitude;
+      }
     }
 
     const w = ctx.width;

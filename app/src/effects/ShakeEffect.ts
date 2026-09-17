@@ -3,6 +3,7 @@ import type { RenderContext, RuntimeEffect } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { ShakeEffectConfig } from '../types/project';
 import { sampleParam } from '../types/project';
+import { audioTargetEnergy } from '../audio/reactivity';
 
 /**
  * Shake effect: noise-driven position and rotation offsets.
@@ -29,8 +30,9 @@ export class ShakeEffectRuntime implements RuntimeEffect<ShakeEffectConfig> {
     const speed = sampleParam(this.config.speed, t);
     const audioAmount = sampleParam(this.config.audioAmount, t);
 
-    // Multiplier: if audio-driven, scale by RMS
-    const mult = this.config.audioDriven ? audio.rms * audioAmount : 1;
+    const mult = this.config.audioDriven
+      ? audioTargetEnergy(audio, this.config.audioTarget) * audioAmount
+      : 1;
 
     // 2D noise-based offset
     const noiseX = (pseudoNoise(t * speed) - 0.5) * 2;

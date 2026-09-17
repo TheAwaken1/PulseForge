@@ -13,7 +13,7 @@ import { useProjectStore } from '../state/projectStore';
 import { useTransportStore } from '../state/transportStore';
 import { useExportStore } from '../state/exportStore';
 import { emptyAudioFrame } from '../types/audio';
-import { importAudioFile, importImageFile } from '../utils/audioImport';
+import { importAudioFile, importVisualFile } from '../utils/audioImport';
 
 // Singleton instances surviving across renders
 let pixiApp: PixiApp | null = null;
@@ -228,10 +228,10 @@ export const Preview: React.FC = () => {
   // Load textures when image assets change
   useEffect(() => {
     if (!pixiApp?.isReady) return;
-    const imageAssets = project.assets.filter((a) => a.type === 'image');
-    for (const asset of imageAssets) {
+    const visualAssets = project.assets.filter((a) => a.type === 'image' || a.type === 'video');
+    for (const asset of visualAssets) {
       if (!pixiApp.resources.hasTexture(asset.id)) {
-        pixiApp.resources.registerUrl(asset.id, asset.relPath);
+        pixiApp.resources.registerUrl(asset.id, asset.relPath, asset.type === 'video' ? 'video' : 'image', Boolean(asset.metadata?.animated));
         pixiApp.resources.loadTexture(asset.id).catch((e) => console.warn('Texture load failed:', e));
       }
     }
@@ -265,7 +265,7 @@ export const Preview: React.FC = () => {
     analyzer?.setVolume(volumeRef.current);
   }, [project.audio.assetId]);
 
-  // Drag-and-drop for audio/image files
+  // Drag-and-drop for audio/image/video files
   const [dragOver, setDragOver] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -288,8 +288,8 @@ export const Preview: React.FC = () => {
     for (const file of files) {
       if (file.type.startsWith('audio/')) {
         await importAudioFile(file);
-      } else if (file.type.startsWith('image/')) {
-        importImageFile(file);
+      } else if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        importVisualFile(file);
       }
     }
   }, []);
@@ -334,7 +334,7 @@ export const Preview: React.FC = () => {
       </div>
       {dragOver && (
         <div style={styles.dropOverlay}>
-          <div style={styles.dropLabel}>Drop audio or image file</div>
+      <div style={styles.dropLabel}>Drop audio, image, GIF, or video file</div>
         </div>
       )}
       {resDebug && (

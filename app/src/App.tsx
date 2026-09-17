@@ -27,7 +27,7 @@ const App: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      <Toolbar />
+      <Toolbar onQuickCreate={() => setShowWelcome(true)} />
       <div style={styles.main}>
         <div style={{ ...styles.panelWrapper, width: layersPanelOpen ? 240 : 28 }}>
           {layersPanelOpen
@@ -47,7 +47,7 @@ const App: React.FC = () => {
           }
         </div>
       </div>
-      <WelcomeOverlay visible={showWelcome} onDismiss={() => setShowWelcome(false)} />
+      {showWelcome && <WelcomeOverlay visible onDismiss={() => setShowWelcome(false)} />}
     </div>
   );
 };

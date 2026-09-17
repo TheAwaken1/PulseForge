@@ -35,8 +35,12 @@ void main() {
   float depthFade = smoothstep(0.0, 0.6, dist);
   color *= depthFade;
 
+  // Per-frequency ring brightness: each depth band lights up at its own frequency
+  float ringFreq = fract(z * 0.13);
+  float specRing = sampleSpectrum(ringFreq);
+
   // Audio brightness
-  color *= uIntensity * (1.0 + bassB * 4.0);
+  color *= uIntensity * (1.0 + bassB * 4.0 + specRing * ar * 2.5);
 
   // Soft vignette
   color *= exp(-dist * 0.2);

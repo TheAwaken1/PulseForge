@@ -2,6 +2,8 @@ import * as PIXI from 'pixi.js';
 import type { RenderContext, RuntimeLayer } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { BackgroundLayerConfig } from '../types/project';
+import { sampleParam } from '../types/project';
+import { clamp } from './layerUtils';
 
 export class BackgroundLayerRuntime implements RuntimeLayer<BackgroundLayerConfig> {
   id: string;
@@ -28,13 +30,16 @@ export class BackgroundLayerRuntime implements RuntimeLayer<BackgroundLayerConfi
     }
   }
 
-  update(ctx: RenderContext, _t: number, _audio: AudioFrame): void {
+  update(ctx: RenderContext, t: number, _audio: AudioFrame): void {
     if (!this.sprite || this.currentAssetId !== this.config.assetId) {
       this.destroySprite();
       this.tryCreateSprite(ctx);
     }
     if (this.sprite) {
       this.fitSprite(ctx.width, ctx.height);
+      const darkness = clamp(this.config.darkness ? sampleParam(this.config.darkness, t) : 0, 0, 1);
+      const channel = Math.round(255 * (1 - darkness));
+      this.sprite.tint = (channel << 16) | (channel << 8) | channel;
     }
   }
 

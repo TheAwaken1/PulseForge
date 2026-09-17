@@ -58,7 +58,7 @@ export const Inspector: React.FC<InspectorProps> = ({ onCollapse }) => {
     }
   };
 
-  const imageAssets = project.assets.filter((a) => a.type === 'image');
+  const visualAssets = project.assets.filter((a) => a.type === 'image' || a.type === 'video');
 
   return (
     <div style={styles.panel} className="scrollable">
@@ -95,7 +95,7 @@ export const Inspector: React.FC<InspectorProps> = ({ onCollapse }) => {
       {/* Kind-specific controls */}
       <LayerControls
         layer={layer}
-        imageAssets={imageAssets}
+        imageAssets={visualAssets}
         handleAssignAsset={handleAssignAsset}
         handleParamChange={handleParamChange}
         handleDirectChange={handleDirectChange}
@@ -110,13 +110,23 @@ export const Inspector: React.FC<InspectorProps> = ({ onCollapse }) => {
           style={{ marginBottom: 8 }}
         >
           <option value="">+ Add Effect</option>
-          <option value="glow">Glow</option>
-          <option value="shake">Shake</option>
-          <option value="pulse">Pulse</option>
-          <option value="strobe">Strobe</option>
-          <option value="blur">Blur</option>
-          <option value="chromaticAberration">Chromatic Aberration</option>
-          <option value="vignette">Vignette</option>
+          <optgroup label="Light & Color">
+            <option value="glow">Glow</option>
+            <option value="bloom">Bloom / HDR Glow</option>
+            <option value="colorGrade">Color Grade</option>
+            <option value="vignette">Vignette</option>
+          </optgroup>
+          <optgroup label="Motion & Audio">
+            <option value="beatPunch">Beat Punch</option>
+            <option value="pulse">Pulse</option>
+            <option value="shake">Shake</option>
+            <option value="strobe">Strobe</option>
+          </optgroup>
+          <optgroup label="Digital Style">
+            <option value="pixelate">Beat Pixelate</option>
+            <option value="chromaticAberration">Chromatic Aberration</option>
+            <option value="blur">Blur</option>
+          </optgroup>
         </select>
         {layer.effects.map((effect) => (
           <EffectItem

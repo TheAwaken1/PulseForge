@@ -3,6 +3,7 @@ import type { RenderContext, RuntimeEffect } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { ChromaticAberrationEffectConfig } from '../types/project';
 import { sampleParam } from '../types/project';
+import { audioTargetEnergy } from '../audio/reactivity';
 
 /**
  * Chromatic Aberration effect: simulates RGB channel offset
@@ -26,7 +27,7 @@ export class ChromaticAberrationEffectRuntime implements RuntimeEffect<Chromatic
     const angle = sampleParam(this.config.angle, t);
 
     if (this.config.audioDriven) {
-      amount *= audio.rms;
+      amount *= audioTargetEnergy(audio, this.config.audioTarget);
     }
 
     // Simulate chromatic aberration as subtle position offset

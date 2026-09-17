@@ -2,6 +2,7 @@ import type { AudioFrame } from '../types/audio';
 import { DEFAULT_ANALYSIS_PARAMS } from '../types/audio';
 import { computeBinMapping, applyBinMapping, type BinMapping } from './logBins';
 import { SmoothingFilter, applyCompression } from './smoothing';
+import { BeatDetector } from './BeatDetector';
 
 /**
  * Real-time audio analyzer using WebAudio API.
@@ -23,6 +24,8 @@ export class RealtimeAnalyzer {
   private outputBuf: Float32Array;
   private emptyFrame: AudioFrame;
   private adaptiveRef = 0.25;
+  private beatDetector: BeatDetector;
+  private lastFrameMs = -1;
 
   private fftSize: number;
   private binCount: number;
@@ -42,8 +45,9 @@ export class RealtimeAnalyzer {
     this.compressionPow = compressionPow;
     this.binnedData = new Float32Array(binCount);
     this.outputBuf = new Float32Array(binCount);
-    this.emptyFrame = { t: 0, bins: new Float32Array(binCount), rms: 0 };
+    this.emptyFrame = { t: 0, bins: new Float32Array(binCount), rms: 0, beat: false, beatPhase: 0, bpm: 120 };
     this.smoother = new SmoothingFilter(binCount);
+    this.beatDetector = new BeatDetector();
   }
 
   /**
@@ -176,10 +180,19 @@ export class RealtimeAnalyzer {
     }
     const rms = Math.sqrt(rmsSum / this.timeDomainData.length);
 
+    // Beat detection — use wall-clock dt so it stays accurate regardless of framerate
+    const nowMs = performance.now();
+    const dt = this.lastFrameMs < 0 ? 1 / 60 : Math.min(0.2, (nowMs - this.lastFrameMs) / 1000);
+    this.lastFrameMs = nowMs;
+    const { beat, beatPhase, bpm } = this.beatDetector.process(output, dt);
+
     return {
       t: this.getCurrentTime(),
       bins: output,
       rms: Math.min(1, rms * 2), // Scale up for visual impact
+      beat,
+      beatPhase,
+      bpm,
     };
   }
 
@@ -214,6 +227,8 @@ export class RealtimeAnalyzer {
     this.audioBuffer = null;
     this.smoother.reset();
     this.adaptiveRef = 0.25;
+    this.beatDetector.reset();
+    this.lastFrameMs = -1;
   }
 }
 

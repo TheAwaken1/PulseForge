@@ -34,17 +34,91 @@ export interface TranscribeChunk {
 }
 
 /** Convert seconds to LRC timestamp [mm:ss.xx] */
-function secondsToLrc(sec: number): string {
+export function secondsToLrc(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-/** Convert Whisper chunks to LRC string */
+interface TimedTranscriptWord {
+  text: string;
+  start: number;
+  end: number;
+  sourceBoundary: boolean;
+}
+
+/**
+ * Whisper models disagree about chunk granularity: some return one chunk per
+ * word, while others return an entire verse (or song) as a single chunk. Turn
+ * either shape into short, readable lyric lines with interpolated timestamps.
+ */
 export function chunksToLrc(chunks: TranscribeChunk[]): string {
-  return chunks
-    .filter((c) => c.timestamp[0] != null && c.text.trim())
-    .map((c) => `[${secondsToLrc(c.timestamp[0])}]${c.text.trim()}`)
+  const usable = chunks.filter((chunk) => (
+    Number.isFinite(chunk.timestamp?.[0]) && chunk.text.trim().length > 0
+  ));
+  const words: TimedTranscriptWord[] = [];
+
+  for (let chunkIndex = 0; chunkIndex < usable.length; chunkIndex++) {
+    const chunk = usable[chunkIndex];
+    const parts = chunk.text.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) continue;
+
+    const start = chunk.timestamp[0];
+    const nextStart = usable[chunkIndex + 1]?.timestamp?.[0];
+    const suppliedEnd = chunk.timestamp[1];
+    const end = Number.isFinite(suppliedEnd)
+      ? Number(suppliedEnd)
+      : Number.isFinite(nextStart)
+        ? Number(nextStart)
+        : start + parts.length * 0.42;
+    const duration = Math.max(0.08 * parts.length, end - start);
+
+    parts.forEach((text, wordIndex) => {
+      words.push({
+        text,
+        start: start + duration * wordIndex / parts.length,
+        end: start + duration * (wordIndex + 1) / parts.length,
+        sourceBoundary: wordIndex === parts.length - 1,
+      });
+    });
+  }
+
+  if (words.length === 0) return '';
+
+  const lines: Array<{ time: number; text: string }> = [];
+  let lineStart = 0;
+
+  const commitLine = (endExclusive: number) => {
+    const lineWords = words.slice(lineStart, endExclusive);
+    if (lineWords.length === 0) return;
+    lines.push({
+      time: lineWords[0].start,
+      text: lineWords.map((word) => word.text).join(' '),
+    });
+    lineStart = endExclusive;
+  };
+
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index];
+    const count = index - lineStart + 1;
+    const lineDuration = word.end - words[lineStart].start;
+    const nextGap = index + 1 < words.length ? words[index + 1].start - word.end : Infinity;
+    const sentenceEnd = /[.!?\u2026]["')\]]?$/.test(word.text);
+    const phraseEnd = /[,;:]["')\]]?$/.test(word.text);
+
+    const shouldBreak = count >= 9
+      || (count >= 3 && sentenceEnd)
+      || (count >= 5 && phraseEnd)
+      || (count >= 5 && word.sourceBoundary)
+      || (count >= 4 && lineDuration >= 4.2)
+      || (count >= 3 && nextGap >= 0.75)
+      || index === words.length - 1;
+
+    if (shouldBreak) commitLine(index + 1);
+  }
+
+  return lines
+    .map((line) => `[${secondsToLrc(line.time)}]${line.text}`)
     .join('\n');
 }
 

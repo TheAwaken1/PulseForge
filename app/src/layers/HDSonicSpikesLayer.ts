@@ -82,8 +82,12 @@ export class HDSonicSpikesLayerRuntime extends HDAudioBase implements RuntimeLay
 
     this.glowBlur.blur = 2 + glowStrength * 5;
 
+    this.updateBeatKick(audio.beat, frameFactor);
     const bands = bandStatsAudio(audio.bins);
-    const transient = clamp(1 + (audio.rms * 0.85 + bands.treble * 0.85) * transientBoost, 1, 3.2);
+    const transient = clamp(
+      1 + (audio.rms * 0.85 + bands.treble * 0.85) * transientBoost + this.beatKick * 0.5,
+      1, 3.5,
+    );
 
     this.processAudio(audio, {
       barCount, gain, compressionPow, attackAdj, releaseAdj,

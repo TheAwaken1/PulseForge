@@ -3,6 +3,7 @@ import type { RenderContext, RuntimeEffect } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { PulseEffectConfig } from '../types/project';
 import { sampleParam } from '../types/project';
+import { audioTargetEnergy } from '../audio/reactivity';
 
 /**
  * Pulse effect: scale pulse driven by audio RMS.
@@ -26,8 +27,8 @@ export class PulseEffectRuntime implements RuntimeEffect<PulseEffectConfig> {
     const audioAmount = sampleParam(this.config.audioAmount, t);
     const smoothing = sampleParam(this.config.smoothing, t);
 
-    // Smooth the RMS
-    this.smoothedRms += (audio.rms - this.smoothedRms) * smoothing;
+    const energy = audioTargetEnergy(audio, this.config.audioTarget);
+    this.smoothedRms += (energy - this.smoothedRms) * smoothing;
 
     const scaleAdd = baseAdd + this.smoothedRms * audioAmount;
     target.scale.x += scaleAdd;

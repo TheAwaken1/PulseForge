@@ -3,6 +3,7 @@ import type { AudioFrame } from '../types/audio';
 import { DEFAULT_ANALYSIS_PARAMS } from '../types/audio';
 import { computeBinMapping, applyBinMapping } from './logBins';
 import { SmoothingFilter, applyCompression } from './smoothing';
+import { BeatDetector } from './BeatDetector';
 
 /**
  * Offline audio analyzer: decodes the full audio track and precomputes
@@ -57,6 +58,9 @@ export class OfflineAnalyzer {
     // Allocate output arrays
     const bins = new Float32Array(totalFrames * binCount);
     const rms = new Float32Array(totalFrames);
+    const beats = new Uint8Array(totalFrames);
+    const beatPhaseArr = new Float32Array(totalFrames);
+    const bpmArr = new Float32Array(totalFrames);
 
     // Precompute Hann window
     const window = new Float32Array(fftSize);
@@ -69,6 +73,8 @@ export class OfflineAnalyzer {
     const fftMagnitudes = new Float32Array(halfFFT);
     const binnedFrame = new Float32Array(binCount);
     const sampledRawLevels: number[] = [];
+    const beatDetector = new BeatDetector();
+    const hopDt = hopSize / sampleRate;
 
     for (let frame = 0; frame < totalFrames; frame++) {
       const start = frame * hopSize;
@@ -109,6 +115,12 @@ export class OfflineAnalyzer {
           sampledRawLevels.push(raw);
         }
       }
+
+      // Beat detection runs on raw bins (pre-normalization) for best transient response
+      const { beat, beatPhase, bpm } = beatDetector.process(binnedFrame, hopDt);
+      beats[frame] = beat ? 1 : 0;
+      beatPhaseArr[frame] = beatPhase;
+      bpmArr[frame] = bpm;
 
       // Compute RMS from time domain
       let rmsSum = 0;
@@ -161,6 +173,9 @@ export class OfflineAnalyzer {
       durationSec: totalSamples / sampleRate,
       bins,
       rms,
+      beats,
+      beatPhase: beatPhaseArr,
+      bpm: bpmArr,
     };
 
     return this.result;
@@ -171,10 +186,13 @@ export class OfflineAnalyzer {
    */
   sampleAtTime(t: number): AudioFrame {
     if (!this.result) {
-      return { t, bins: new Float32Array(72), rms: 0 };
+      return { t, bins: new Float32Array(72), rms: 0, beat: false, beatPhase: 0, bpm: 120 };
     }
 
-    const { hopSize, sampleRate, binCount, totalFrames, bins, rms: rmsArr } = this.result;
+    const {
+      hopSize, sampleRate, binCount, totalFrames,
+      bins, rms: rmsArr, beats, beatPhase: beatPhaseArr, bpm: bpmArr,
+    } = this.result;
     const analysisFps = sampleRate / hopSize;
     const index = t * analysisFps;
 
@@ -193,7 +211,12 @@ export class OfflineAnalyzer {
     // Interpolate RMS
     const rms = rmsArr[i0] + frac * (rmsArr[i1] - rmsArr[i0]);
 
-    return { t, bins: outputBins, rms: Math.min(1, rms * 2) };
+    // Beat: true only at the exact frame; interpolated beatPhase and bpm
+    const beat = beats[i0] === 1;
+    const beatPhase = beatPhaseArr[i0] + frac * (beatPhaseArr[i1] - beatPhaseArr[i0]);
+    const bpm = bpmArr[i0] + frac * (bpmArr[i1] - bpmArr[i0]);
+
+    return { t, bins: outputBins, rms: Math.min(1, rms * 2), beat, beatPhase, bpm };
   }
 
   get analysisResult(): OfflineAnalysisResult | null {

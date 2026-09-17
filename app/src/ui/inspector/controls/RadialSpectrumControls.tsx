@@ -1,6 +1,7 @@
 import React from 'react';
 import { sampleParam, staticParam, type RadialSpectrumLayerConfig, type LayerAny } from '../../../types/project';
 import { Section, Field, RangeInput } from '../SharedWidgets';
+import { LiquidMotionControls } from './LiquidMotionControls';
 
 interface Props {
   layer: RadialSpectrumLayerConfig;
@@ -26,6 +27,15 @@ export const RadialSpectrumControls: React.FC<Props> = ({ layer, handleParamChan
       <input type="color" value={sampleParam(layer.color.solid, 0)}
         onChange={(e) => { updateLayer(layer.id, { color: { mode: 'solid', solid: staticParam(e.target.value) } } as any); }} />
     </Field>
+    <Field label="Rounded Bars">
+      <input
+        type="checkbox"
+        checked={layer.roundedCaps ?? false}
+        onChange={(e) => updateLayer(layer.id, { roundedCaps: e.target.checked } as any)}
+        style={{ accentColor: 'var(--accent)' }}
+      />
+    </Field>
+    <LiquidMotionControls enabled={layer.liquidMotion} amount={layer.liquidAmount} speed={layer.liquidSpeed} handleParamChange={handleParamChange} />
     <Field label="Noise Jitter">
       <RangeInput value={sampleParam(layer.noiseJitter, 0)} min={0} max={0.1} step={0.005} onChange={(v) => handleParamChange('noiseJitter', v)} />
     </Field>

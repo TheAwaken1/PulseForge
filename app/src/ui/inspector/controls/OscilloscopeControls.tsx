@@ -1,6 +1,7 @@
 import React from 'react';
 import { sampleParam, type OscilloscopeLayerConfig } from '../../../types/project';
 import { Section, Field, RangeInput } from '../SharedWidgets';
+import { LiquidMotionControls } from './LiquidMotionControls';
 
 interface Props {
   layer: OscilloscopeLayerConfig;
@@ -67,6 +68,7 @@ export const OscilloscopeControls: React.FC<Props> = ({ layer, handleParamChange
         CRT Scanlines
       </label>
     </Field>
+    <LiquidMotionControls enabled={layer.liquidMotion} amount={layer.liquidAmount} speed={layer.liquidSpeed} handleParamChange={handleParamChange} />
     <Field label="Gamma">
       <RangeInput value={sampleParam(layer.gamma, 0)} min={0.5} max={2} step={0.01} onChange={(v) => handleParamChange('gamma', v)} />
     </Field>

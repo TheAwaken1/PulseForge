@@ -82,8 +82,9 @@ export class HDBarsReflectionLayerRuntime extends HDAudioBase implements Runtime
     this.reflectionBlur.blur = reflectionBlur;
     this.reflection.visible = reflectionEnabled;
 
+    this.updateBeatKick(audio.beat, frameFactor);
     const stats = bandStatsAudio(audio.bins);
-    const bandBoost = clamp(0.95 + stats.bass * 0.25 + stats.mid * 0.18 + stats.treble * 0.1, 0.9, 1.5);
+    const bandBoost = clamp(0.95 + stats.bass * 0.25 + stats.mid * 0.18 + stats.treble * 0.1 + this.beatKick * 0.4, 0.9, 2.0);
 
     this.processAudio(audio, {
       barCount, gain, compressionPow, attackAdj, releaseAdj,
