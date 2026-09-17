@@ -11,6 +11,12 @@ import { startAutosave, stopAutosave } from './project/autosave';
 import { initHistory } from './state/historyStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
+// Dev-only: expose stores for debugging in the browser console.
+if ((import.meta as any).env?.DEV && typeof window !== 'undefined') {
+  import('./state/projectStore').then((m) => { (window as any).__pulseforge = { ...((window as any).__pulseforge || {}), project: m.useProjectStore }; });
+  import('./state/transportStore').then((m) => { (window as any).__pulseforge = { ...((window as any).__pulseforge || {}), transport: m.useTransportStore }; });
+}
+
 const App: React.FC = () => {
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);

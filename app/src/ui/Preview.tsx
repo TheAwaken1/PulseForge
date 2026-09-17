@@ -13,7 +13,7 @@ import { useProjectStore } from '../state/projectStore';
 import { useTransportStore } from '../state/transportStore';
 import { useExportStore } from '../state/exportStore';
 import { emptyAudioFrame } from '../types/audio';
-import { importAudioFile, importVisualFile } from '../utils/audioImport';
+import { importAudioFile, importVisualFileToLayer } from '../utils/audioImport';
 
 // Singleton instances surviving across renders
 let pixiApp: PixiApp | null = null;
@@ -289,7 +289,7 @@ export const Preview: React.FC = () => {
       if (file.type.startsWith('audio/')) {
         await importAudioFile(file);
       } else if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-        importVisualFile(file);
+        importVisualFileToLayer(file);
       }
     }
   }, []);

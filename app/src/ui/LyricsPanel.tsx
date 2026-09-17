@@ -98,8 +98,8 @@ export const LyricsPanel: React.FC = () => {
         setLrc(imported.lrc);
         if (imported.autoTimed) {
           setStatus(imported.usedSongDuration
-            ? `Imported ${imported.lineCount} lines and timed them across the song.`
-            : `Imported ${imported.lineCount} lines with estimated timing. Load audio first for song-length timing.`);
+            ? `Imported ${imported.lineCount} lines with ESTIMATED timing (no timestamps in the file). Click "Sync Lyrics to Audio" to align them to the vocals.`
+            : `Imported ${imported.lineCount} lines with estimated timing. Load the song, then click "Sync Lyrics to Audio" to align them.`);
         } else {
           setStatus(`Imported ${imported.lineCount} timed lyric lines.`);
         }

@@ -18,7 +18,7 @@ export interface LyricsAlignmentResult {
   confidence: number;
 }
 
-const LRC_RE = /^\s*\[(\d{1,2}):(\d{2})(?:\.(\d{2,3}))?\](.*)$/;
+import { parseLrc } from './lrc';
 
 function tokenize(text: string): string[] {
   return (text.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter(Boolean);
@@ -26,19 +26,10 @@ function tokenize(text: string): string[] {
 
 function parseLyrics(content: string): LyricLine[] {
   const lines: LyricLine[] = [];
-  for (const raw of content.split(/\r?\n/)) {
-    const match = raw.match(LRC_RE);
-    if (!match) continue;
-    const fraction = match[3] ?? '0';
-    const milliseconds = fraction.length === 2 ? Number(fraction) * 10 : Number(fraction);
-    const text = match[4].trim();
-    const tokens = tokenize(text);
-    if (!text || tokens.length === 0) continue;
-    lines.push({
-      time: Number(match[1]) * 60 + Number(match[2]) + milliseconds / 1000,
-      text,
-      tokens,
-    });
+  for (const line of parseLrc(content)) {
+    const tokens = tokenize(line.text);
+    if (tokens.length === 0) continue;
+    lines.push({ time: line.time, text: line.text, tokens });
   }
   return lines;
 }

@@ -5,30 +5,10 @@ import type { LyricsLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
 import { bandStatsAudio, clamp, DESIGN_WIDTH, DESIGN_HEIGHT } from './layerUtils';
 
-export interface LrcLine {
-  time: number;
-  text: string;
-}
-
-export function parseLrc(content: string): LrcLine[] {
-  const lines: LrcLine[] = [];
-  // Match [mm:ss.xx], [mm:ss.xxx], or [mm:ss] timestamps
-  const lineRe = /\[(\d{1,2}):(\d{2})(?:\.(\d{2,3}))?\](.*)/;
-  for (const raw of content.split('\n')) {
-    const match = raw.trim().match(lineRe);
-    if (!match) continue;
-    const mins = parseInt(match[1], 10);
-    const secs = parseInt(match[2], 10);
-    const fracStr = match[3] ?? '0';
-    const ms = fracStr.length === 2
-      ? parseInt(fracStr, 10) * 10
-      : parseInt(fracStr, 10);
-    const time = mins * 60 + secs + ms / 1000;
-    const text = match[4].trim();
-    lines.push({ time, text });
-  }
-  return lines.sort((a, b) => a.time - b.time);
-}
+// LRC parsing lives in utils/lrc.ts so the layer, the importer, and the
+// Whisper alignment all accept the same timestamp formats.
+export { parseLrc, type LrcLine } from '../utils/lrc';
+import { parseLrc, type LrcLine } from '../utils/lrc';
 
 function findLineIndex(lines: LrcLine[], t: number): number {
   let idx = -1;

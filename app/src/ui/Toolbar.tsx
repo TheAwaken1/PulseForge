@@ -10,7 +10,7 @@ import {
   downloadVideoBlob,
   type ExportQualityMode,
 } from '../export/ExportOrchestrator';
-import { importAudioFile, importVisualFile } from '../utils/audioImport';
+import { importAudioFile, importVisualFileToLayer } from '../utils/audioImport';
 import { useHistoryStore } from '../state/historyStore';
 import { PresetGallery } from './PresetGallery';
 
@@ -113,7 +113,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    importVisualFile(file);
+    importVisualFileToLayer(file);
     e.target.value = '';
   };
 

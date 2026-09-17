@@ -13,7 +13,8 @@ PulseForge is a fully local, cross-platform audio visualizer editor. Turn a back
 - **Creative layer effects** - Finish any layer with HDR bloom, Color Grade, Beat Pixelate, glow, pulse, shake, chromatic aberration, vignette, and more.
 - **Directed audio reactions** - Target supported effects to the full mix, bass, mids, highs, or detected beats, with Beat Punch for sharp music-video impact.
 - **Liquid motion engine** - Add adjustable organic flow to radial spectra, radial waveforms, bottom spectra, circular HD spectra, and oscilloscopes.
-- **Flexible lyrics** - Import timed `.lrc` files, auto-time structured `.txt` lyrics, align supplied lines to real vocal timing with Whisper, or transcribe with local Whisper or the OpenAI Whisper API.
+- **Flexible lyrics** - Import timed `.lrc` files, auto-time structured `.txt` lyrics, align supplied lines to real vocal timing with Whisper, or transcribe with local Whisper or the OpenAI Whisper API. Timed files may use `[mm:ss.xx]`, `[mm:ss:xx]`, `[mm:ss.x]`, `[hh:mm:ss.xx]`, repeated stamps on one line, enhanced-LRC word tags, and an `[offset:]` header. Plain `.txt` lyrics get estimated timing only; use **Sync Lyrics to Audio** to lock them to the vocals.
+- **Drop-in images** - Importing an image or video from the toolbar or by drag-and-drop puts it on screen immediately: the first becomes the Background layer, the next becomes a Logo layer.
 - **Deterministic MP4 export** - Offline audio analysis produces repeatable, frame-perfect output at 720p, 1080p, 1440p, or 4K. The finished video downloads straight from the editor, and a copy is also written to the `output/` folder.
 - **Local project files** - Save, load, autosave, undo, and recover projects without uploading media.
 

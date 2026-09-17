@@ -14,6 +14,7 @@ import {
   type SpectrogramLayerConfig,
 } from '../types/project';
 import { createLogoSpectrumLayer } from '../layers/logoSpectrumDefaults';
+import { createBackgroundLayer, createLogoLayer } from '../layers/visualLayerDefaults';
 
 const LAYER_ICONS: Record<string, string> = {
   background: '\u2588',
@@ -284,35 +285,6 @@ function formatKind(kind: string): string {
 }
 
 // --- Layer factory functions ---
-
-function createBackgroundLayer(): BackgroundLayerConfig {
-  return {
-    id: createLayerId(), name: 'Background', kind: 'background', enabled: true,
-    opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(), effects: [],
-    assetId: '', fit: 'cover', darkness: staticParam(0),
-  };
-}
-
-function createLogoLayer(): LogoLayerConfig {
-  return {
-    id: createLayerId(), name: 'Logo', kind: 'logo', enabled: true,
-    opacity: staticParam(1), blendMode: 'normal', transform: defaultTransform(), effects: [],
-    assetId: '', anchor: 'center',
-    frameShape: 'circle',
-    cornerRadius: staticParam(30),
-    fitMode: 'cover',
-    autoFitOnImport: true,
-    frameSize: staticParam(375),
-    padding: staticParam(8),
-    border: {
-      enabled: true,
-      width: staticParam(20),
-      color: staticParam('#8b7cff'),
-      glow: true,
-    },
-    _refitSeq: 0,
-  };
-}
 
 function createRadialSpectrumLayer(): RadialSpectrumLayerConfig {
   return {

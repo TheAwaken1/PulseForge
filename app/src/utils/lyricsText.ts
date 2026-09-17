@@ -1,6 +1,6 @@
 import { secondsToLrc } from './transcribe';
+import { hasLrcTimestamps, parseLrc } from './lrc';
 
-const TIMESTAMP_RE = /^\s*\[\d{1,2}:\d{2}(?:\.\d{2,3})?\]/m;
 const SECTION_RE = /^\s*\[[^\]]+\]\s*$/;
 
 export interface LyricsImportResult {
@@ -21,8 +21,8 @@ export function importLyricsText(content: string, songDurationSec: number): Lyri
   const normalized = content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
   if (!normalized) throw new Error('The lyrics file is empty.');
 
-  if (TIMESTAMP_RE.test(normalized)) {
-    const lineCount = normalized.split('\n').filter((line) => TIMESTAMP_RE.test(line)).length;
+  if (hasLrcTimestamps(normalized)) {
+    const lineCount = parseLrc(normalized).length;
     if (lineCount === 0) throw new Error('No timed lyric lines were found.');
     return { lrc: normalized, lineCount, autoTimed: false, usedSongDuration: false };
   }
