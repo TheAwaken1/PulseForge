@@ -161,8 +161,19 @@ export const LyricsPanel: React.FC = () => {
             timingOffsetSec: staticParam(0),
             timingScale: staticParam(1),
           } as any);
-          const timingLabel = message.timestampMode === 'word' ? 'word timing' : 'segment timing fallback';
-          setStatus(`Synced ${aligned.matchedLines}/${aligned.lineCount} lines · ${Math.round(aligned.confidence * 100)}% match · ${timingLabel}`);
+          const timingLabel = message.timestampMode === 'word' ? 'word timing' : 'segment timing';
+          const heardPct = Math.round(aligned.confidence * 100);
+          const estimated = aligned.lineCount - aligned.matchedLines;
+          // Both numbers describe the same thing: how much of the supplied lyric
+          // text Whisper actually heard. Every line still gets a time; lines
+          // that were not heard are placed between their heard neighbours.
+          let summary = `Synced ${aligned.lineCount} lines · ${aligned.matchedLines} heard directly`
+            + (estimated > 0 ? `, ${estimated} placed between them` : '')
+            + ` · ${aligned.wordsMatched}/${aligned.wordCount} words heard (${heardPct}%) · ${timingLabel}`;
+          if (heardPct < 60 && !/turbo|medium/i.test(selectedModel.id)) {
+            summary += ' · For tighter sync, pick Small or Large v3 Turbo and sync again.';
+          }
+          setStatus(summary);
         } catch (alignmentError) {
           setError(alignmentError instanceof Error ? alignmentError.message : 'Lyric alignment failed.');
           setStatus('');
