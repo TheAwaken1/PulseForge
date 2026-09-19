@@ -8,6 +8,7 @@ import {
   ExportOrchestrator,
   estimateExportFileSizeBytes,
   downloadVideoBlob,
+  downloadVideoUrl,
   type ExportQualityMode,
 } from '../export/ExportOrchestrator';
 import { importAudioFile, importVisualFileToLayer } from '../utils/audioImport';
@@ -174,7 +175,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
   };
   const handleDownloadResult = () => {
     const result = useExportStore.getState().result;
-    if (result?.blob) downloadVideoBlob(result.blob, result.fileName);
+    if (result?.downloadUrl) downloadVideoUrl(result.downloadUrl, result.fileName);
+    else if (result?.blob) downloadVideoBlob(result.blob, result.fileName);
   };
   const handleCancelExport = () => {
     exportRef.current?.cancel();
@@ -353,7 +355,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onQuickCreate }) => {
             )}
             <div style={styles.modalActions}>
               <button className="ghost" onClick={() => exportStore.reset()}>Close</button>
-              {exportStore.result.blob && (
+              {(exportStore.result.downloadUrl || exportStore.result.blob) && (
                 <button className="primary" onClick={handleDownloadResult}>
                   &#11015; Download Video
                 </button>

@@ -31,6 +31,16 @@ export function downloadVideoBlob(blob: Blob, fileName: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+/** Download a finalized export from the local Pinokio server without loading it into memory again. */
+export function downloadVideoUrl(url: string, fileName: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 /**
  * Check if running inside Tauri.
  */
@@ -242,6 +252,7 @@ export class ExportOrchestrator {
       fileName: outputPath.split(/[\/]/).pop() || 'export.mp4',
       blob: null,
       savedPath: outputPath,
+      downloadUrl: null,
       width,
       height,
     });
@@ -279,6 +290,7 @@ export class ExportOrchestrator {
     // Decode audio and create a stream track
     let audioCtx: AudioContext | null = null;
     let audioSource: AudioBufferSourceNode | null = null;
+    let audioClock: AudioWorkletNode | null = null;
 
     try {
       audioCtx = new AudioContext();
@@ -289,7 +301,9 @@ export class ExportOrchestrator {
       const dest = audioCtx.createMediaStreamDestination();
       audioSource = audioCtx.createBufferSource();
       audioSource.buffer = audioBuffer;
-      audioSource.connect(dest);
+      audioClock = await createAudioExportClock(audioCtx, fps, audioBuffer.numberOfChannels);
+      audioSource.connect(audioClock);
+      audioClock.connect(dest);
 
       // Add the audio track into the combined stream
       const audioTrack = dest.stream.getAudioTracks()[0];
@@ -322,86 +336,86 @@ export class ExportOrchestrator {
     recorder.start(RECORDER_TIMESLICE_MS);
 
     // Start audio playback
+    let audioClockStartedAt = 0;
     if (audioSource && audioCtx) {
+      await audioCtx.resume();
+      audioClockStartedAt = audioCtx.currentTime;
       audioSource.start(0);
     }
 
-    // Chromium throttles requestAnimationFrame in a background tab. Pause the
-    // recorder and audio clock with it so hidden time is not encoded as a held
-    // video frame, then exclude that time from the render clock on resume.
+    // requestAnimationFrame stops when a browser tab or window is hidden. The
+    // AudioWorklet clock above remains part of the actively recorded audio
+    // graph, so it can keep driving video frames while another window covers
+    // PulseForge. A timer is retained only as a silent-export fallback.
     const startWall = performance.now();
-    let hiddenStartedAt: number | null = null;
-    let hiddenDurationMs = 0;
-    const handleVisibilityChange = () => {
-      const now = performance.now();
-      if (document.hidden) {
-        if (hiddenStartedAt === null) hiddenStartedAt = now;
-        if (recorder.state === 'recording') recorder.pause();
-        if (audioCtx?.state === 'running') void audioCtx.suspend();
-      } else {
-        if (hiddenStartedAt !== null) {
-          hiddenDurationMs += now - hiddenStartedAt;
-          hiddenStartedAt = null;
-        }
-        if (audioCtx?.state === 'suspended') void audioCtx.resume();
-        if (recorder.state === 'paused') recorder.resume();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    handleVisibilityChange();
-
-    // Render frames one at a time per animation frame to keep the browser responsive.
-    // The previous while-loop catch-up pattern could block the event loop for many
-    // seconds on complex / high-resolution scenes, causing the browser tab to freeze
-    // (appearing as a white screen). Rendering at most one frame per rAF tick prevents
-    // that while still maintaining correct active-time timing for A/V sync.
     const duration = project.durationSec;
     const videoTrack = stream.getVideoTracks()[0];
-    let frame = 0;
+    let lastRenderedFrame = -1;
+    let fallbackTimer: number | null = null;
 
     try {
-      await new Promise<void>((resolve) => {
-        const tick = () => {
-          if (this.cancelled) {
-            resolve();
-            return;
-          }
-
-          if (frame >= totalFrames) {
-            resolve();
-            return;
-          }
-
-          const elapsed = (performance.now() - startWall - hiddenDurationMs) / 1000;
-          // Only render when it's time for the next frame on the active export clock.
-          // At most one frame per rAF tick — never block the event loop.
-          if (frame <= Math.floor(elapsed * fps)) {
-            const t = Math.min(frame / fps, duration);
-            const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
-            this.offscreenApp!.renderFrame(t, audioFrame, project.layers);
-            captureCtx.drawImage(sourceCanvas, 0, 0, width, height);
-
-            if ('requestFrame' in videoTrack) {
-              (videoTrack as any).requestFrame();
-            }
-
-            frame++;
-            exportStore.updateProgress(frame);
-          }
-
-          requestAnimationFrame(tick);
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
         };
 
-        requestAnimationFrame(tick);
+        const tick = () => {
+          if (settled) return;
+          if (this.cancelled) { finish(); return; }
+
+          try {
+            const elapsed = audioClock && audioCtx
+              ? Math.max(0, audioCtx.currentTime - audioClockStartedAt)
+              : Math.max(0, (performance.now() - startWall) / 1000);
+            const targetFrame = Math.min(totalFrames - 1, Math.floor(elapsed * fps));
+
+            // If rendering temporarily falls behind, jump to the current audio
+            // frame instead of stretching the video or blocking to catch up.
+            if (targetFrame > lastRenderedFrame) {
+              const t = Math.min(targetFrame / fps, duration);
+              const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
+              this.offscreenApp!.renderFrame(t, audioFrame, project.layers);
+              captureCtx.drawImage(sourceCanvas, 0, 0, width, height);
+
+              if ('requestFrame' in videoTrack) {
+                (videoTrack as any).requestFrame();
+              }
+
+              lastRenderedFrame = targetFrame;
+              exportStore.updateProgress(targetFrame + 1);
+            }
+
+            if (elapsed >= duration && lastRenderedFrame >= totalFrames - 1) {
+              finish();
+            }
+          } catch (error) {
+            if (settled) return;
+            settled = true;
+            reject(error);
+          }
+        };
+
+        if (audioClock) {
+          audioClock.port.onmessage = tick;
+          tick();
+        } else {
+          fallbackTimer = window.setInterval(tick, Math.max(4, Math.floor(1000 / fps)));
+          tick();
+        }
       });
     } finally {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (audioClock) audioClock.port.onmessage = null;
+      if (fallbackTimer !== null) window.clearInterval(fallbackTimer);
     }
 
     // Stop audio
     if (audioSource) {
       try { audioSource.stop(); } catch { /* already stopped */ }
     }
+    if (audioClock) audioClock.disconnect();
     if (audioCtx) {
       audioCtx.close();
     }
@@ -426,6 +440,7 @@ export class ExportOrchestrator {
 
     // Try saving directly to the output/ folder via the Vite dev server middleware
     let savedPath: string | null = null;
+    let downloadUrl: string | null = null;
     try {
       const response = await fetch('/api/save-export', {
         method: 'POST',
@@ -433,23 +448,28 @@ export class ExportOrchestrator {
         body: blob,
       });
       if (response.ok) {
-        try {
-          const info = await response.json();
-          savedPath = typeof info?.path === 'string' ? info.path : `output/${baseName}`;
-        } catch {
-          savedPath = `output/${baseName}`;
-        }
+        const info = await response.json();
+        savedPath = typeof info?.path === 'string' ? info.path : `output/${baseName}`;
+        downloadUrl = typeof info?.downloadUrl === 'string' ? info.downloadUrl : null;
         console.info('[PulseForge] Export saved to', savedPath);
+      } else {
+        const message = await response.text();
+        throw new Error(`Could not finalize the exported video${message ? `: ${message}` : ''}`);
       }
-    } catch {
-      // Dev server endpoint not available — the in-app download still works.
+    } catch (error: any) {
+      console.warn('[PulseForge] Could not save/finalize export:', error);
+      throw new Error(
+        `The recording finished, but PulseForge could not finalize it with duration and seek metadata: ${error?.message || error}`,
+      );
     }
 
-    // Keep the video in memory so the editor can offer a "Download video" button.
+    // Prefer the finalized file URL so the large, fragmented recording blob
+    // can be released before the user downloads it.
     exportStore.setResult({
       fileName: baseName,
-      blob,
+      blob: downloadUrl ? null : blob,
       savedPath,
+      downloadUrl,
       width,
       height,
     });
@@ -457,7 +477,8 @@ export class ExportOrchestrator {
     // Download straight from the visualizer screen when requested, or when we
     // could not write to the output/ folder at all.
     if (options.autoDownload !== false || !savedPath) {
-      downloadVideoBlob(blob, baseName);
+      if (downloadUrl) downloadVideoUrl(downloadUrl, baseName);
+      else downloadVideoBlob(blob, baseName);
     }
   }
 
@@ -553,6 +574,64 @@ export class ExportOrchestrator {
     return new Uint8Array(imageData.data);
   }
 
+}
+
+/**
+ * Build an audio-thread clock that passes the export audio through unchanged
+ * and notifies the main thread once per requested video frame. Audio worklets
+ * continue servicing an active MediaStream recording when visual animation
+ * callbacks are suspended for a hidden or occluded window.
+ */
+async function createAudioExportClock(
+  context: AudioContext,
+  fps: number,
+  sourceChannels: number,
+): Promise<AudioWorkletNode> {
+  const processorSource = `
+    class PulseForgeExportClock extends AudioWorkletProcessor {
+      constructor(options) {
+        super();
+        const fps = Math.max(1, Number(options.processorOptions?.fps) || 30);
+        this.samplesPerTick = sampleRate / fps;
+        this.samplesUntilTick = 0;
+      }
+
+      process(inputs, outputs) {
+        const input = inputs[0] || [];
+        const output = outputs[0] || [];
+        for (let channel = 0; channel < output.length; channel++) {
+          const source = input[Math.min(channel, Math.max(0, input.length - 1))];
+          if (source) output[channel].set(source);
+          else output[channel].fill(0);
+        }
+
+        const blockSize = output[0]?.length || 128;
+        this.samplesUntilTick -= blockSize;
+        if (this.samplesUntilTick <= 0) {
+          this.port.postMessage(0);
+          do this.samplesUntilTick += this.samplesPerTick;
+          while (this.samplesUntilTick <= 0);
+        }
+        return true;
+      }
+    }
+
+    registerProcessor('pulseforge-export-clock', PulseForgeExportClock);
+  `;
+
+  const moduleUrl = URL.createObjectURL(new Blob([processorSource], { type: 'text/javascript' }));
+  try {
+    await context.audioWorklet.addModule(moduleUrl);
+  } finally {
+    URL.revokeObjectURL(moduleUrl);
+  }
+
+  return new AudioWorkletNode(context, 'pulseforge-export-clock', {
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    outputChannelCount: [Math.max(1, Math.min(2, sourceChannels))],
+    processorOptions: { fps },
+  });
 }
 
 /**

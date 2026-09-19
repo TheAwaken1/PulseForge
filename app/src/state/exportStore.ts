@@ -14,6 +14,8 @@ export interface ExportResult {
   blob: Blob | null;
   /** Path where the video was written on disk, if known. */
   savedPath: string | null;
+  /** Streaming download URL for the finalized, seekable browser export. */
+  downloadUrl: string | null;
   /** Pixel size of the exported video. */
   width: number;
   height: number;
