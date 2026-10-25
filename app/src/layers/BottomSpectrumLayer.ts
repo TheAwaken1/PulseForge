@@ -3,7 +3,7 @@ import type { RenderContext, RuntimeLayer } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { BottomSpectrumLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
-import { DESIGN_HEIGHT, DESIGN_WIDTH, resolvePositionParam, resolveSizeParam } from './layerUtils';
+import { DESIGN_HEIGHT, DESIGN_WIDTH, resolvePositionParam, resolveSizeParam, timeFactor60fps, normalizeRate } from './layerUtils';
 import { liquidMagnitude } from './liquidMotion';
 
 /**
@@ -38,6 +38,7 @@ export class BottomSpectrumLayerRuntime implements RuntimeLayer<BottomSpectrumLa
 
     // Beat flash: decaying multiplier for height boost on beat
     const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    const frameFactor = timeFactor60fps(t, this.lastT);
     this.lastT = t;
     if (audio.beat) {
       this.beatFlash = 1.0;
@@ -49,8 +50,8 @@ export class BottomSpectrumLayerRuntime implements RuntimeLayer<BottomSpectrumLa
     const gain = sampleParam(this.config.gain, t);
     const colorHex = sampleParam(this.config.color, t);
     const color = parseInt(colorHex.replace('#', ''), 16);
-    const attack = sampleParam(this.config.smoothing.attack, t);
-    const release = sampleParam(this.config.smoothing.release, t);
+    const attack = normalizeRate(sampleParam(this.config.smoothing.attack, t), frameFactor);
+    const release = normalizeRate(sampleParam(this.config.smoothing.release, t), frameFactor);
     const liquidAmount = this.config.liquidMotion
       ? (this.config.liquidAmount ? sampleParam(this.config.liquidAmount, t) : 0.65)
       : 0;

@@ -19,12 +19,18 @@ export class SmoothingFilter {
 
   /**
    * Process a frame of values and return the smoothed result.
+   *
+   * frameFactor scales the per-frame rates for frame-rate independence
+   * (1 = one 60fps frame, 2 = one 30fps frame). Without it the response
+   * slows down whenever fewer frames are rendered, e.g. during export.
    */
-  process(input: Float32Array): Float32Array {
+  process(input: Float32Array, frameFactor = 1): Float32Array {
+    const attack = frameFactor === 1 ? this.attack : scaleRate(this.attack, frameFactor);
+    const release = frameFactor === 1 ? this.release : scaleRate(this.release, frameFactor);
     for (let i = 0; i < this.values.length && i < input.length; i++) {
       const current = input[i];
       const prev = this.values[i];
-      const rate = current > prev ? this.attack : this.release;
+      const rate = current > prev ? attack : release;
       this.values[i] = prev + rate * (current - prev);
     }
     return this.values;
@@ -44,6 +50,10 @@ export class SmoothingFilter {
   reset(): void {
     this.values.fill(0);
   }
+}
+
+function scaleRate(rate: number, frameFactor: number): number {
+  return 1 - Math.pow(1 - Math.max(0.001, Math.min(0.999, rate)), frameFactor);
 }
 
 /**

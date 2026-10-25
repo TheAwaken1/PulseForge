@@ -4,7 +4,7 @@ import type { AudioFrame } from '../types/audio';
 import type { RadialSpectrumLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
 import { SmoothingFilter, applyCompression } from '../audio/smoothing';
-import { DESIGN_HEIGHT, DESIGN_WIDTH, clamp, hexStringToNumber, lerpColor, resolvePositionParam } from './layerUtils';
+import { DESIGN_HEIGHT, DESIGN_WIDTH, clamp, hexStringToNumber, lerpColor, resolvePositionParam, timeFactor60fps } from './layerUtils';
 import { liquidMagnitude } from './liquidMotion';
 
 /**
@@ -51,6 +51,7 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
 
     // Beat flash: instant ring expansion on each beat
     const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    const frameFactor = timeFactor60fps(t, this.lastT);
     this.lastT = t;
     if (audio.beat) {
       this.beatFlash = 1.0;
@@ -104,7 +105,7 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
       );
       this.peaks = new Float32Array(barCount);
     }
-    const smoothed = this.smoother.process(mapped);
+    const smoothed = this.smoother.process(mapped, frameFactor);
 
     // Color
     const colorMode = this.config.color.mode;
@@ -147,7 +148,7 @@ export class RadialSpectrumLayerRuntime implements RuntimeLayer<RadialSpectrumLa
 
       // Peak hold
       if (peakEnabled) {
-        this.peaks[i] = Math.max(this.peaks[i] * peakDecay, magnitude);
+        this.peaks[i] = Math.max(this.peaks[i] * Math.pow(peakDecay, frameFactor), magnitude);
       }
 
       // Compute bar polygon corners in absolute coords.

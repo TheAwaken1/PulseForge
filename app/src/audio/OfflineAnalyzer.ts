@@ -183,8 +183,9 @@ export class OfflineAnalyzer {
 
   /**
    * Sample the analysis at a given time t with linear interpolation.
+   * Pass prevT (the previously rendered time) to catch beats between samples.
    */
-  sampleAtTime(t: number): AudioFrame {
+  sampleAtTime(t: number, prevT?: number): AudioFrame {
     if (!this.result) {
       return { t, bins: new Float32Array(72), rms: 0, beat: false, beatPhase: 0, bpm: 120 };
     }
@@ -211,8 +212,17 @@ export class OfflineAnalyzer {
     // Interpolate RMS
     const rms = rmsArr[i0] + frac * (rmsArr[i1] - rmsArr[i0]);
 
-    // Beat: true only at the exact frame; interpolated beatPhase and bpm
-    const beat = beats[i0] === 1;
+    // Beat flags last a single analysis frame (~12ms). When the caller steps
+    // in larger increments (e.g. 30fps export), report any beat that landed
+    // since prevT so beats are not silently skipped between video frames.
+    let beat = beats[i0] === 1;
+    if (!beat && prevT !== undefined && prevT < t) {
+      const from = Math.max(0, Math.floor(prevT * analysisFps) + 1);
+      for (let i = from; i < i0; i++) {
+        if (beats[i] === 1) { beat = true; break; }
+      }
+    }
+    // Interpolated beatPhase and bpm
     const beatPhase = beatPhaseArr[i0] + frac * (beatPhaseArr[i1] - beatPhaseArr[i0]);
     const bpm = bpmArr[i0] + frac * (bpmArr[i1] - bpmArr[i0]);
 

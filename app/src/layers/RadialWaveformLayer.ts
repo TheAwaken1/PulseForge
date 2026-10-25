@@ -3,7 +3,7 @@ import type { RenderContext, RuntimeLayer } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { RadialWaveformLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
-import { DESIGN_HEIGHT, DESIGN_WIDTH, clamp, resolvePositionParam } from './layerUtils';
+import { DESIGN_HEIGHT, DESIGN_WIDTH, clamp, resolvePositionParam, timeFactor60fps, normalizeRate } from './layerUtils';
 import { liquidMagnitude } from './liquidMotion';
 
 /**
@@ -39,6 +39,7 @@ export class RadialWaveformLayerRuntime implements RuntimeLayer<RadialWaveformLa
 
     // Beat flash: ring amplitude surge on each beat
     const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    const frameFactor = timeFactor60fps(t, this.lastT);
     this.lastT = t;
     if (audio.beat) {
       this.beatFlash = 1.0;
@@ -54,8 +55,8 @@ export class RadialWaveformLayerRuntime implements RuntimeLayer<RadialWaveformLa
     const lineWidth = clamp(sampleParam(this.config.lineWidth, t) * designScale, 1, 12);
     const colorHex = sampleParam(this.config.color, t);
     const color = parseInt(colorHex.replace('#', ''), 16);
-    const attack = sampleParam(this.config.smoothing.attack, t);
-    const release = sampleParam(this.config.smoothing.release, t);
+    const attack = normalizeRate(sampleParam(this.config.smoothing.attack, t), frameFactor);
+    const release = normalizeRate(sampleParam(this.config.smoothing.release, t), frameFactor);
     const liquidAmount = this.config.liquidMotion
       ? (this.config.liquidAmount ? sampleParam(this.config.liquidAmount, t) : 0.65)
       : 0;

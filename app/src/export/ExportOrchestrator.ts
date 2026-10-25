@@ -219,7 +219,7 @@ export class ExportOrchestrator {
       }
 
       const t = startSec + frame / fps;
-      const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
+      const audioFrame = this.offlineAnalyzer.sampleAtTime(t, frame > 0 ? t - 1 / fps : undefined);
       this.offscreenApp!.renderFrame(t, audioFrame, project.layers, { present: false, syncMediaTime: true });
       const expectedBytes = width * height * 4;
       const rgba = this.extractScaledPixels(width, height);
@@ -351,6 +351,7 @@ export class ExportOrchestrator {
     const duration = project.durationSec;
     const videoTrack = stream.getVideoTracks()[0];
     let lastRenderedFrame = -1;
+    let lastRenderedT: number | undefined;
     let fallbackTimer: number | null = null;
 
     try {
@@ -375,9 +376,13 @@ export class ExportOrchestrator {
             // If rendering temporarily falls behind, jump to the current audio
             // frame instead of stretching the video or blocking to catch up.
             if (targetFrame > lastRenderedFrame) {
-              const t = Math.min(targetFrame / fps, duration);
-              const audioFrame = this.offlineAnalyzer.sampleAtTime(t);
+              // Render at the actual audio clock time, not the frame boundary:
+              // MediaRecorder timestamps the frame when it is captured, so a
+              // frame-quantized t would show visuals up to one frame late.
+              const t = Math.min(elapsed, duration);
+              const audioFrame = this.offlineAnalyzer.sampleAtTime(t, lastRenderedT);
               this.offscreenApp!.renderFrame(t, audioFrame, project.layers);
+              lastRenderedT = t;
               captureCtx.drawImage(sourceCanvas, 0, 0, width, height);
 
               if ('requestFrame' in videoTrack) {

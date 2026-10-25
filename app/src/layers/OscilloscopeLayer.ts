@@ -3,7 +3,7 @@ import type { RenderContext, RuntimeLayer } from '../renderer/types';
 import type { AudioFrame } from '../types/audio';
 import type { OscilloscopeLayerConfig } from '../types/project';
 import { sampleParam } from '../types/project';
-import { clamp, hexStringToNumber, lerpColor, bandStatsAudio, DESIGN_WIDTH, DESIGN_HEIGHT } from './layerUtils';
+import { clamp, hexStringToNumber, lerpColor, bandStatsAudio, DESIGN_WIDTH, DESIGN_HEIGHT, timeFactor60fps, normalizeRate } from './layerUtils';
 import { liquidMagnitude } from './liquidMotion';
 
 /**
@@ -54,6 +54,7 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
 
     // Beat flash: amplitude surge on each beat
     const dt = this.lastT >= 0 ? Math.min(0.2, Math.max(0, t - this.lastT)) : 1 / 60;
+    const frameFactor = timeFactor60fps(t, this.lastT);
     this.lastT = t;
     if (audio.beat) {
       this.beatFlash = 1.0;
@@ -65,6 +66,7 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
     const lineWidth = clamp(sampleParam(this.config.lineWidth, t), 1, 12);
     const gain = clamp(sampleParam(this.config.gain, t), 0.5, 5);
     const smoothing = clamp(sampleParam(this.config.smoothing, t), 0, 1);
+    const followRate = smoothing >= 1 ? 0 : normalizeRate(1 - smoothing, frameFactor);
     const sampleCount = clamp(Math.round(sampleParam(this.config.sampleCount, t)), 64, 512);
     const colorHex = sampleParam(this.config.color, t);
     const color = hexStringToNumber(colorHex);
@@ -122,7 +124,7 @@ export class OscilloscopeLayerRuntime implements RuntimeLayer<OscilloscopeLayerC
       const raw = Math.max(0, cubicSample(srcPos));
       // Smoothing envelope: lerp toward new value
       const prev = this.smoothed[i];
-      this.smoothed[i] = prev + (1 - smoothing) * (raw - prev);
+      this.smoothed[i] = prev + followRate * (raw - prev);
     }
 
     // Apply gain and gamma to produce final values array (beat flash adds up to 25% amplitude boost)
